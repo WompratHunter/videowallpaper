@@ -84,15 +84,25 @@ private func runGraceTests() {
 
 private func runWakeTests() {
     // A healthy player is never interrupted on wake or unlock.
-    checkEqual(RecoveryMonitor.verdictAfterWake(timeAdvanced: true, isIntendingToPlay: true, hasFailed: false), nil)
+    let fresh = RecoveryMonitor()
+    checkEqual(fresh.verdictAfterWake(at: 0, timeAdvanced: true, isIntendingToPlay: true, hasFailed: false), nil)
     checkEqual(
-        RecoveryMonitor.verdictAfterWake(timeAdvanced: false, isIntendingToPlay: true, hasFailed: false),
+        fresh.verdictAfterWake(at: 0, timeAdvanced: false, isIntendingToPlay: true, hasFailed: false),
         .notPlayingOnWake)
     checkEqual(
-        RecoveryMonitor.verdictAfterWake(timeAdvanced: nil, isIntendingToPlay: true, hasFailed: false),
+        fresh.verdictAfterWake(at: 0, timeAdvanced: nil, isIntendingToPlay: true, hasFailed: false),
         .notPlayingOnWake)
-    checkEqual(RecoveryMonitor.verdictAfterWake(timeAdvanced: true, isIntendingToPlay: true, hasFailed: true), .failed)
-    checkEqual(RecoveryMonitor.verdictAfterWake(timeAdvanced: nil, isIntendingToPlay: false, hasFailed: true), nil)
+    checkEqual(fresh.verdictAfterWake(at: 0, timeAdvanced: true, isIntendingToPlay: true, hasFailed: true), .failed)
+    checkEqual(fresh.verdictAfterWake(at: 0, timeAdvanced: nil, isIntendingToPlay: false, hasFailed: true), nil)
+
+    // A player rebuilt moments ago (e.g. at launch) may still be loading, so not advancing is no verdict yet.
+    var monitor = RecoveryMonitor()
+    monitor.noteRebuild(at: 50)
+    checkEqual(monitor.verdictAfterWake(at: 51, timeAdvanced: false, isIntendingToPlay: true, hasFailed: false), nil)
+    checkEqual(monitor.verdictAfterWake(at: 51, timeAdvanced: nil, isIntendingToPlay: true, hasFailed: true), .failed)
+    checkEqual(
+        monitor.verdictAfterWake(at: 70, timeAdvanced: false, isIntendingToPlay: true, hasFailed: false),
+        .notPlayingOnWake)
 }
 
 private func runBackoffTests() {

@@ -21,13 +21,10 @@ func newestVideo(in dir: URL) -> URL? {
 }
 
 // MARK: - Per-screen wallpaper window
+// Only hosts the shared player's layers; all playback lives in Player.
 
 final class WallpaperWindow: NSWindow {
-    private let playerLayer = AVPlayerLayer()
-    private var player: AVQueuePlayer?
-    private var looper: AVPlayerLooper?
-
-    init(screen: NSScreen) {
+    init(screen: NSScreen, player: Player) {
         super.init(
             contentRect: screen.frame,
             styleMask: .borderless,
@@ -42,103 +39,35 @@ final class WallpaperWindow: NSWindow {
         backgroundColor = .black
         isReleasedWhenClosed = false
 
-        playerLayer.videoGravity = .resizeAspectFill
-        playerLayer.frame = CGRect(origin: .zero, size: screen.frame.size)
         contentView?.wantsLayer = true
-        contentView?.layer?.addSublayer(playerLayer)
-    }
-
-    func play(url: URL) {
-        looper = nil
-        player?.pause()
-
-        let item = AVPlayerItem(url: url)
-        let q = AVQueuePlayer(playerItem: item)
-        q.isMuted = true
-        q.preventsDisplaySleepDuringVideoPlayback = false
-        looper = AVPlayerLooper(player: q, templateItem: item)
-        playerLayer.player = q
-        player = q
-        q.play()
-    }
-
-    func pause() { player?.pause() }
-    func resume() { player?.play() }
-
-    var playbackSeconds: Double? {
-        guard let time = player?.currentTime(), time.isNumeric else { return nil }
-        return time.seconds
-    }
-
-    func stateReport(sinceSeconds earlier: Double?) -> PlayerStateReport {
-        guard let player else { return .noPlayer }
-        let item = player.currentItem
-        return PlayerStateReport(
-            playerStatus: name(of: player.status),
-            itemStatus: item.map { name(of: $0.status) } ?? "none",
-            itemError: (item?.error ?? player.error).map(describe),
-            timeControl: name(of: player.timeControlStatus),
-            waitingReason: player.reasonForWaitingToPlay?.rawValue,
-            timeAdvanced: playbackAdvanced(from: earlier, to: playbackSeconds))
+        contentView?.layer?.addSublayer(player.makeLayers(frame: CGRect(origin: .zero, size: screen.frame.size)))
     }
 
     func reassert() {
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
-        orderBack(nil)
-        if player?.timeControlStatus == .paused { player?.play() }
+        orderFront(nil)
     }
-}
-
-// MARK: - AV state names
-
-private func name(of status: AVPlayer.Status) -> String {
-    switch status {
-    case .unknown: return "unknown"
-    case .readyToPlay: return "readyToPlay"
-    case .failed: return "failed"
-    @unknown default: return "rawValue\(status.rawValue)"
-    }
-}
-
-private func name(of status: AVPlayerItem.Status) -> String {
-    switch status {
-    case .unknown: return "unknown"
-    case .readyToPlay: return "readyToPlay"
-    case .failed: return "failed"
-    @unknown default: return "rawValue\(status.rawValue)"
-    }
-}
-
-private func name(of status: AVPlayer.TimeControlStatus) -> String {
-    switch status {
-    case .paused: return "paused"
-    case .waitingToPlayAtSpecifiedRate: return "waitingToPlayAtSpecifiedRate"
-    case .playing: return "playing"
-    @unknown default: return "rawValue\(status.rawValue)"
-    }
-}
-
-private func describe(_ error: Error) -> String {
-    let nsError = error as NSError
-    return "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
 }
 
 // MARK: - App delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let player = Player()
     private var windows: [WallpaperWindow] = []
-    private var currentVideo: URL?
     private var folderWatch: DispatchSourceFileSystemObject?
-    private var reassertTimer: Timer?
+    private var tickTimer: Timer?
     private let wallpaperDir = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
 
     func applicationDidFinishLaunching(_ n: Notification) {
         Log.write("launch", "pid=\(ProcessInfo.processInfo.processIdentifier) screens=\(NSScreen.screens.count)")
+        player.videoProvider = { [weak self] in self.flatMap { newestVideo(in: $0.wallpaperDir) } }
+        player.onVideoChange = { [weak self] url in self?.exportPoster(from: url) }
         buildWindows()
+        loadVideo()
         startFolderWatch()
-        startReassertTimer()
+        startTickTimer()
         observeSystemEvents()
-        logPlayerState(cause: "launch")
+        player.checkAfterWake(cause: "launch")
     }
 
     private func observeSystemEvents() {
@@ -164,36 +93,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
-    // MARK: - Diagnostics
-
-    /// Samples each player now and again a moment later, so the line records whether time actually advanced
-    /// rather than trusting timeControlStatus, which can claim "playing" for a dead player.
-    private func logPlayerState(cause: String) {
-        let samples = windows.map { (window: $0, earlierSeconds: $0.playbackSeconds) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            let video = self?.currentVideo?.lastPathComponent ?? "none"
-            for (index, sample) in samples.enumerated() {
-                let report = sample.window.stateReport(sinceSeconds: sample.earlierSeconds)
-                Log.write(cause, "screen=\(index) video=\(video) \(report)")
-            }
-            if samples.isEmpty { Log.write(cause, "screens=0 video=\(video) \(PlayerStateReport.noPlayer)") }
-        }
-    }
-
     // MARK: - Window management
 
     private func buildWindows() {
         windows.forEach { $0.close() }
-        windows = NSScreen.screens.map { WallpaperWindow(screen: $0) }
-        windows.forEach { $0.makeKeyAndOrderFront(nil) }
-        loadVideo()
+        windows = NSScreen.screens.map { WallpaperWindow(screen: $0, player: player) }
+        // orderFront, not makeKeyAndOrderFront: a desktop window must never take keyboard focus.
+        windows.forEach { $0.orderFront(nil) }
     }
 
     private func loadVideo() {
-        guard let url = newestVideo(in: wallpaperDir), url != currentVideo else { return }
-        currentVideo = url
-        windows.forEach { $0.play(url: url) }
-        exportPoster(from: url)
+        guard let url = newestVideo(in: wallpaperDir), url != player.video else { return }
+        player.show(url)
     }
 
     // MARK: - Folder watching
@@ -206,13 +117,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fileDescriptor: fd,
             eventMask: [.write, .rename, .delete],
             queue: .main)
-        src.setEventHandler { [weak self] in self?.loadVideo() }
+        src.setEventHandler { [weak self] in
+            self?.player.resetBackoff(on: .folderChange)
+            self?.loadVideo()
+        }
         src.setCancelHandler { close(fd) }
         src.resume()
         folderWatch = src
     }
 
-    // MARK: - Static poster for Mission Control / login screen
+    // MARK: - Poster for the window underlay, Mission Control and the Lock screen
 
     private func exportPoster(from video: URL) {
         let poster = wallpaperDir.appendingPathComponent(".poster.jpg")
@@ -222,6 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         gen.maximumSize = CGSize(width: 3840, height: 2160)
         gen.generateCGImageAsynchronously(for: CMTime(seconds: 5, preferredTimescale: 600)) { img, _, err in
             guard let img, err == nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard self?.player.video == video else { return }
+                self?.player.setPoster(img)
+            }
             let rep = NSBitmapImageRep(cgImage: img)
             if let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) {
                 try? data.write(to: poster)
@@ -235,29 +153,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Reassert timer
+    // MARK: - Shared tick
 
-    private func startReassertTimer() {
-        reassertTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+    private func startTickTimer() {
+        let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             self?.windows.forEach { $0.reassert() }
+            self?.player.healthTick()
         }
+        timer.tolerance = 2
+        tickTimer = timer
     }
 
     // MARK: - Notifications
 
     @objc private func screensSleep() {
-        Log.write("screens-sleep", "pausing \(windows.count) player(s)")
-        windows.forEach { $0.pause() }
+        Log.write("screens-sleep", "pausing shared player")
+        player.pause()
     }
 
     @objc private func screensWake() {
-        logPlayerState(cause: "screens-wake")
         windows.forEach { $0.reassert() }
+        player.resetBackoff(on: .wake)
+        player.resume()
+        player.checkAfterWake(cause: "screens-wake")
     }
 
-    @objc private func systemWake() { logPlayerState(cause: "wake") }
-    @objc private func sessionActive() { logPlayerState(cause: "session-active") }
-    @objc private func screenUnlocked() { logPlayerState(cause: "unlock") }
+    @objc private func systemWake() {
+        player.resetBackoff(on: .wake)
+        player.checkAfterWake(cause: "wake")
+    }
+
+    @objc private func sessionActive() { player.checkAfterWake(cause: "session-active") }
+
+    @objc private func screenUnlocked() {
+        player.resetBackoff(on: .unlock)
+        player.checkAfterWake(cause: "unlock")
+    }
+
     @objc private func screensChanged() { buildWindows() }
 }
 

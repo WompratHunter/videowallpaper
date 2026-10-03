@@ -50,10 +50,12 @@ struct RecoveryMonitor {
     }
 
     /// On wake or unlock a healthy player is left alone; only one that is not actually playing is rebuilt.
-    static func verdictAfterWake(timeAdvanced: Bool?, isIntendingToPlay: Bool, hasFailed: Bool) -> RecoveryCause? {
+    func verdictAfterWake(
+        at now: TimeInterval, timeAdvanced: Bool?, isIntendingToPlay: Bool, hasFailed: Bool
+    ) -> RecoveryCause? {
         guard isIntendingToPlay else { return nil }
         if hasFailed { return .failed }
-        return timeAdvanced == true ? nil : .notPlayingOnWake
+        return timeAdvanced == true || isInGrace(at: now) ? nil : .notPlayingOnWake
     }
 
     private func isInGrace(at now: TimeInterval) -> Bool {
