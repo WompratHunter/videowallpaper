@@ -17,11 +17,14 @@ enum RebuildPlan: Equatable {
     case play(URL, at: Double)
     /// No eligible video in the folder: rest on the Poster. Not a failure, so the backoff does not advance.
     case restNoVideo
+    /// Low Power Mode: build nothing. Leaving Low Power Mode rebuilds instead.
+    case holdForPower
 }
 
 /// What a rebuild does, given the newest eligible video re-picked from the folder at rebuild time.
 /// The same video resumes at the saved position; a replacement starts from the beginning.
-func rebuildPlan(newest: URL?, current: URL?, saved: Double) -> RebuildPlan {
+func rebuildPlan(newest: URL?, current: URL?, saved: Double, isPowerSaving: Bool) -> RebuildPlan {
+    if isPowerSaving { return .holdForPower }
     guard let newest else { return .restNoVideo }
     return .play(newest, at: newest == current ? saved : 0)
 }

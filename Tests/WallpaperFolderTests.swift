@@ -17,7 +17,20 @@ func runWallpaperFolderTests() {
     check(videoListing(of: ["beach.mp4": start, "city.mov": start]) != before, "a new video is a change")
     check(videoListing(of: [:]) != before, "a removed video is a change")
     check(videoListing(of: ["beach.mp4": start.addingTimeInterval(1)]) != before, "a replaced video is a change")
+
+    checkEqual(newestVideo(in: ["old.mp4": start, "new.mp4": start.addingTimeInterval(5)]), "new.mp4")
+    checkEqual(newestVideo(in: [:]), nil)
     runFolderChangeActionTests()
+    runSettleTests()
+    runFolderSettlerTests()
+}
+
+private func action(
+    newest: URL?, current: URL?, exists: Bool, recovering: Bool = false, powerSaving: Bool = false
+) -> FolderChangeAction {
+    folderChangeAction(
+        newest: newest, current: current, currentExists: exists, isRecovering: recovering,
+        isPowerSaving: powerSaving)
 }
 
 private func runFolderChangeActionTests() {
@@ -25,24 +38,66 @@ private func runFolderChangeActionTests() {
     let sea = URL(fileURLWithPath: "/v/sea.mp4")
 
     // Healthy playback keeps "newest wins".
-    checkEqual(folderChangeAction(newest: rain, current: rain, currentExists: true, isRecovering: false), .keepPlaying)
-    checkEqual(folderChangeAction(newest: sea, current: rain, currentExists: true, isRecovering: false), .switchTo(sea))
-    checkEqual(folderChangeAction(newest: sea, current: nil, currentExists: false, isRecovering: false), .switchTo(sea))
+    checkEqual(action(newest: rain, current: rain, exists: true), .keepPlaying)
+    checkEqual(action(newest: sea, current: rain, exists: true), .switchTo(sea))
+    checkEqual(action(newest: sea, current: nil, exists: false), .switchTo(sea))
 
-    // The playing file vanished but another video is there: a logged Recovery that rebuilds promptly.
-    checkEqual(
-        folderChangeAction(newest: sea, current: rain, currentExists: false, isRecovering: false),
-        .rebuildSoon(.fileMissing))
+    // The playing file vanished but another video is there: a logged Recovery that rebuilds now (the settle
+    // check already debounced the burst of folder events).
+    checkEqual(action(newest: sea, current: rain, exists: false), .rebuildNow(.fileMissing))
 
     // No eligible video left: rest on the Poster (not a failure).
-    checkEqual(folderChangeAction(newest: nil, current: rain, currentExists: false, isRecovering: false), .restNoVideo)
-    checkEqual(folderChangeAction(newest: nil, current: nil, currentExists: false, isRecovering: true), .restNoVideo)
+    checkEqual(action(newest: nil, current: rain, exists: false), .restNoVideo)
+    checkEqual(action(newest: nil, current: nil, exists: false, recovering: true), .restNoVideo)
 
     // A video is back (returned or newly added) while Recovery is pending or resting: rebuild now, not after backoff.
-    checkEqual(
-        folderChangeAction(newest: rain, current: rain, currentExists: true, isRecovering: true),
-        .rebuildSoon(.videoAvailable))
-    checkEqual(
-        folderChangeAction(newest: sea, current: rain, currentExists: true, isRecovering: true),
-        .rebuildSoon(.videoAvailable))
+    checkEqual(action(newest: rain, current: rain, exists: true, recovering: true), .rebuildNow(.videoAvailable))
+    checkEqual(action(newest: sea, current: rain, exists: true, recovering: true), .rebuildNow(.videoAvailable))
+
+    // In Low Power Mode nothing is built; leaving it re-picks the newest video.
+    checkEqual(action(newest: sea, current: rain, exists: true, powerSaving: true), .waitForPower)
+    checkEqual(action(newest: sea, current: rain, exists: false, powerSaving: true), .waitForPower)
+    checkEqual(action(newest: nil, current: rain, exists: false, powerSaving: true), .waitForPower)
+}
+
+private func file(_ size: Int64, _ seconds: TimeInterval = 0) -> VideoFile {
+    VideoFile(size: size, modified: Date(timeIntervalSince1970: seconds))
+}
+
+private func runSettleTests() {
+    let earlier = ["done.mp4": file(500), "copying.mp4": file(100), "empty.mp4": file(0), "gone.mp4": file(9)]
+    let later = ["done.mp4": file(500), "copying.mp4": file(300), "empty.mp4": file(0), "new.mp4": file(50, 7)]
+    let settled = settledVideos(earlier: earlier, later: later)
+    checkEqual(Set(settled.keys), ["done.mp4"])
+    checkEqual(settled["done.mp4"], Date(timeIntervalSince1970: 0))
+}
+
+private func runFolderSettlerTests() {
+    // Videos already present at launch are trusted, so playback starts without a settle delay.
+    var settler = FolderSettler(trusting: ["rain.mp4": file(500)])
+    checkEqual(Set(settler.ready.keys), ["rain.mp4"])
+
+    // A copy starts: the first event schedules a check; more events while it is pending don't.
+    check(settler.noteEvent(["rain.mp4": file(500), "sea.mp4": file(10)]), "first event schedules a check")
+    check(!settler.noteEvent(["rain.mp4": file(500), "sea.mp4": file(20)]), "pending check is not rescheduled")
+
+    // Still growing 3 s later: not loaded, check again.
+    check(settler.check(["rain.mp4": file(500), "sea.mp4": file(40)]), "a growing file needs another check")
+    checkEqual(Set(settler.ready.keys), ["rain.mp4"])
+
+    // Unchanged across two checks: settled and loadable; nothing left to watch.
+    check(!settler.check(["rain.mp4": file(500), "sea.mp4": file(40, 3)]), "all settled: no more checks")
+    checkEqual(Set(settler.ready.keys), ["rain.mp4", "sea.mp4"])
+    checkEqual(settler.ready["sea.mp4"], Date(timeIntervalSince1970: 3))
+
+    // A deletion drops the file once checked.
+    check(settler.noteEvent(["sea.mp4": file(40, 3)]), "deletion schedules a check")
+    check(!settler.check(["sea.mp4": file(40, 3)]), "deletion needs no further check")
+    checkEqual(Set(settler.ready.keys), ["sea.mp4"])
+
+    // An empty placeholder that never grows is neither loaded nor polled forever.
+    check(settler.noteEvent(["sea.mp4": file(40, 3)]), "an event schedules a check")
+    check(settler.check(["sea.mp4": file(40, 3), "stub.mp4": file(0)]), "a file seen once needs a second look")
+    check(!settler.check(["sea.mp4": file(40, 3), "stub.mp4": file(0)]), "a stable empty file is not polled")
+    checkEqual(Set(settler.ready.keys), ["sea.mp4"])
 }

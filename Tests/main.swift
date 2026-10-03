@@ -4,5 +4,6 @@
 runLogTests()
 runPlayerStateReportTests()
 runRecoveryTests()
+runPlaybackGateTests()
 runWallpaperFolderTests()
 finishTests()

@@ -24,12 +24,10 @@ final class Player {
     private var pendingRebuild: DispatchWorkItem?
     private var pendingSeek: Double?
     private var savedSeconds: Double = 0
-    private var isIntendingToPlay = true
+    private var gate = PlaybackGate()
     private var isRestingWithoutVideo = false
-    /// Short fixed wait after a folder change, so a burst of file events leads to one rebuild.
-    private static let folderDebounce: TimeInterval = 2
 
-    private var shouldBePlaying: Bool { isIntendingToPlay && video != nil }
+    private var shouldBePlaying: Bool { gate.isIntendingToPlay && video != nil }
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     init() {
@@ -70,20 +68,13 @@ final class Player {
         observe(player, newLooper)
         videoLayers.allObjects.forEach { $0.player = player }
         monitor.noteRebuild(at: now)
-        if isIntendingToPlay && pendingSeek == nil { player.play() }
+        if gate.isIntendingToPlay && pendingSeek == nil { player.play() }
         if changed { onVideoChange(url) }
     }
 
-    func pause() {
-        isIntendingToPlay = false
-        if pendingSeek == nil, let seconds = playbackSeconds { savedSeconds = seconds }
-        queuePlayer?.pause()
-    }
-
-    func resume() {
-        if !isIntendingToPlay { monitor.noteResume(at: now) }
-        isIntendingToPlay = true
-        if pendingSeek == nil { queuePlayer?.play() }
+    /// Plays the newest video at launch, unless Low Power Mode holds the Live wallpaper on the Poster.
+    func start() {
+        runRebuildPlan(verb: "playing", cause: "launch")
     }
 
     func resetBackoff(on event: RecoveryBackoff.ResetEvent) {
@@ -102,7 +93,7 @@ final class Player {
             now: now, playbackSeconds: seconds, isIntendingToPlay: shouldBePlaying, hasFailed: hasFailed)
         if let cause = monitor.tick(sample) {
             recover(cause: cause, detail: stateReport(sinceSeconds: nil).description)
-        } else if isIntendingToPlay, pendingSeek == nil, let seconds {
+        } else if gate.isIntendingToPlay, pendingSeek == nil, let seconds {
             // Not while a resume seek is pending: currentTime() is still 0 and would lose the saved position.
             savedSeconds = seconds
         }
@@ -165,19 +156,22 @@ extension Player {
         backoff.reset(on: .folderChange)
         let currentExists = video.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let action = folderChangeAction(
-            newest: newest, current: video, currentExists: currentExists, isRecovering: wasRecovering)
+            newest: newest, current: video, currentExists: currentExists, isRecovering: wasRecovering,
+            isPowerSaving: gate.isPowerSaving)
         switch action {
         case .keepPlaying:
             break
         case .switchTo(let url):
             show(url)
-        case .rebuildSoon(let cause):
+        case .rebuildNow(let cause):
             tearDown()
             isRestingWithoutVideo = false
-            logRecovery(cause, rebuildIn: Self.folderDebounce, detail: "on folder-change")
-            scheduleRebuild(after: Self.folderDebounce)
+            logRecovery(cause, rebuildIn: 0, detail: "on folder-change")
+            scheduleRebuild(after: 0)
         case .restNoVideo:
             restWithoutVideo(detail: "on folder-change")
+        case .waitForPower:
+            Log.write("folder-change", "Low Power Mode: the newest video loads when it ends")
         }
     }
 
@@ -195,12 +189,20 @@ extension Player {
 
     private func rebuild() {
         pendingRebuild = nil
-        switch rebuildPlan(newest: videoProvider(), current: video, saved: savedSeconds) {
+        runRebuildPlan(verb: "rebuilding", cause: "recovery")
+    }
+
+    private func runRebuildPlan(verb: String, cause: String) {
+        let plan = rebuildPlan(
+            newest: videoProvider(), current: video, saved: savedSeconds, isPowerSaving: gate.isPowerSaving)
+        switch plan {
         case let .play(target, resumeAt):
-            Log.write("recovery", "rebuilding video=\(target.lastPathComponent) at=\(format(resumeAt))")
+            Log.write(cause, "\(verb) video=\(target.lastPathComponent) at=\(format(resumeAt))")
             show(target, at: resumeAt)
         case .restNoVideo:
-            restWithoutVideo(detail: "at rebuild")
+            restWithoutVideo(detail: "at \(cause)")
+        case .holdForPower:
+            Log.write(cause, "Low Power Mode: holding on the Poster")
         }
     }
 
@@ -213,6 +215,42 @@ extension Player {
         isRestingWithoutVideo = true
         Log.write("recovery", "cause=no-video video=\(video?.lastPathComponent ?? "none") "
             + "resting on Poster until a video is added \(detail)")
+    }
+}
+
+// MARK: - Low Power Mode, occlusion and screen sleep
+
+extension Player {
+    /// Applies a deliberate reason to stop or start playing; the gate decides what that means for the player.
+    func apply(_ event: PlaybackEvent) {
+        let action = gate.apply(event, isRecoveryResting: backoff.isResting)
+        guard action != .none else { return }
+        Log.write("playback", "event=\(event) action=\(action) mode=\(gate.mode) "
+            + "video=\(video?.lastPathComponent ?? "none")")
+        switch action {
+        case .none:
+            break
+        case .pause:
+            savePosition()
+            queuePlayer?.pause()
+        case .resume:
+            monitor.noteResume(at: now)
+            if pendingSeek == nil { queuePlayer?.play() }
+        case .tearDown:
+            // Any pending Recovery is dropped too: leaving Low Power Mode rebuilds anyway.
+            savePosition()
+            pendingRebuild?.cancel()
+            pendingRebuild = nil
+            isRestingWithoutVideo = false
+            tearDown()
+        case .rebuild:
+            runRebuildPlan(verb: "rebuilding", cause: "power")
+        }
+    }
+
+    /// Not while a resume seek is pending: currentTime() is still 0 and would lose the saved position.
+    private func savePosition() {
+        if pendingSeek == nil, let seconds = playbackSeconds { savedSeconds = seconds }
     }
 }
 
@@ -294,7 +332,7 @@ extension Player {
                 DispatchQueue.main.async {
                     guard let self, let player, player === self.queuePlayer else { return }
                     self.pendingSeek = nil
-                    if self.isIntendingToPlay { player.play() }
+                    if self.gate.isIntendingToPlay { player.play() }
                 }
             }
         default:
