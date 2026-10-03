@@ -122,14 +122,14 @@ private func runRebuildPlanTests() {
     let rain = URL(fileURLWithPath: "/v/rain.mp4")
     let sea = URL(fileURLWithPath: "/v/sea.mp4")
     // A rebuild re-picks from the folder: the same video resumes where it stopped, a replacement starts at 0.
-    checkEqual(rebuildPlan(newest: rain, current: rain, saved: 42.5, isPowerSaving: false), .play(rain, at: 42.5))
-    checkEqual(rebuildPlan(newest: sea, current: rain, saved: 42.5, isPowerSaving: false), .play(sea, at: 0))
-    checkEqual(rebuildPlan(newest: sea, current: nil, saved: 42.5, isPowerSaving: false), .play(sea, at: 0))
+    checkEqual(rebuildPlan(toPlay: rain, current: rain, saved: 42.5, isPowerSaving: false), .play(rain, at: 42.5))
+    checkEqual(rebuildPlan(toPlay: sea, current: rain, saved: 42.5, isPowerSaving: false), .play(sea, at: 0))
+    checkEqual(rebuildPlan(toPlay: sea, current: nil, saved: 42.5, isPowerSaving: false), .play(sea, at: 0))
     // No eligible video left: rest on the Poster rather than retrying the stale file.
-    checkEqual(rebuildPlan(newest: nil, current: rain, saved: 42.5, isPowerSaving: false), .restNoVideo)
+    checkEqual(rebuildPlan(toPlay: nil, current: rain, saved: 42.5, isPowerSaving: false), .restNoVideo)
     // A backoff timer firing in Low Power Mode builds nothing; leaving Low Power Mode rebuilds instead.
-    checkEqual(rebuildPlan(newest: rain, current: rain, saved: 42.5, isPowerSaving: true), .holdForPower)
-    checkEqual(rebuildPlan(newest: nil, current: rain, saved: 42.5, isPowerSaving: true), .holdForPower)
+    checkEqual(rebuildPlan(toPlay: rain, current: rain, saved: 42.5, isPowerSaving: true), .holdForPower)
+    checkEqual(rebuildPlan(toPlay: nil, current: rain, saved: 42.5, isPowerSaving: true), .holdForPower)
 }
 
 private func runBackoffTests() {

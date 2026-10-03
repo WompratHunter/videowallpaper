@@ -13,11 +13,6 @@ func videoListing<Entry>(of entries: [String: Entry]) -> [String: Entry] {
     entries.filter { isWallpaperVideo(named: $0.key) }
 }
 
-/// "Newest video wins": the latest modification date, ties broken by name so the pick is stable.
-func newestVideo(in listing: [String: Date]) -> String? {
-    listing.max { ($0.value, $0.key) < ($1.value, $1.key) }?.key
-}
-
 // MARK: - Settle check
 // A video being copied into the folder grows for a while; loading it early fails or plays a truncated file.
 // A file is ready once its size is unchanged across two checks about 3 s apart. The directory watch only fires
@@ -92,18 +87,18 @@ enum FolderChangeAction: Equatable {
     /// the burst of folder events, so no further delay is needed.
     case rebuildNow(RecoveryCause)
     case restNoVideo
-    /// Low Power Mode: no player is built; leaving it re-picks the newest video.
+    /// Low Power Mode: no player is built; leaving it rebuilds the Rotation's Current video.
     case holdForPower
 }
 
 /// What to do when the folder's set of settled videos changes. `isRecovering` covers a pending rebuild and any rest on
 /// the Poster; a video becoming available then rebuilds promptly instead of waiting out the backoff.
 func folderChangeAction(
-    newest: URL?, current: URL?, currentExists: Bool, isRecovering: Bool, isPowerSaving: Bool
+    toPlay: URL?, current: URL?, currentExists: Bool, isRecovering: Bool, isPowerSaving: Bool
 ) -> FolderChangeAction {
     if isPowerSaving { return .holdForPower }
-    guard let newest else { return .restNoVideo }
+    guard let toPlay else { return .restNoVideo }
     if current != nil && !currentExists { return .rebuildNow(.fileMissing) }
     if isRecovering { return .rebuildNow(.videoAvailable) }
-    return newest == current ? .keepPlaying : .switchTo(newest)
+    return toPlay == current ? .keepPlaying : .switchTo(toPlay)
 }

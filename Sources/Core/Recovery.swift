@@ -21,12 +21,12 @@ enum RebuildPlan: Equatable {
     case holdForPower
 }
 
-/// What a rebuild does, given the newest eligible video re-picked from the folder at rebuild time.
+/// What a rebuild does, given the Rotation's Current video asked for again at rebuild time.
 /// The same video resumes at the saved position; a replacement starts from the beginning.
-func rebuildPlan(newest: URL?, current: URL?, saved: Double, isPowerSaving: Bool) -> RebuildPlan {
+func rebuildPlan(toPlay: URL?, current: URL?, saved: Double, isPowerSaving: Bool) -> RebuildPlan {
     if isPowerSaving { return .holdForPower }
-    guard let newest else { return .restNoVideo }
-    return .play(newest, at: newest == current ? saved : 0)
+    guard let toPlay else { return .restNoVideo }
+    return .play(toPlay, at: toPlay == current ? saved : 0)
 }
 
 struct HealthSample {
