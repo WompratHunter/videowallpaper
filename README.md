@@ -2,7 +2,7 @@
 
 Native macOS video wallpaper. No third-party app — just AVFoundation, compiled once with the system Swift compiler.
 
-Plays any `.mp4`, `.mov` or `.m4v` from `~/Movies/LiveWallpaper/`. Drop in a new file and, once it has been analysed (a few seconds), it switches automatically.
+Plays every `.mp4`, `.mov` or `.m4v` in `~/Movies/LiveWallpaper/` in turn, switching with a slow crossfade when you're unlikely to notice. Drop in a new file and, once it has been analysed (a few seconds), it plays next.
 
 ## Requirements
 
@@ -24,12 +24,13 @@ Then drop a `.mp4` into `~/Movies/LiveWallpaper/`.
 
 | Action | Command |
 |---|---|
-| Change wallpaper | Drop a `.mp4` into `~/Movies/LiveWallpaper/` |
+| Add a video | Drop a `.mp4` into `~/Movies/LiveWallpaper/`; it plays at the next switch |
+| Choose light or dark videos | `defaults write com.evanscott.videowallpaper Mode -string dark` (see [Settings](#settings)) |
 | Stop | `launchctl unload ~/Library/LaunchAgents/com.videowallpaper.plist` |
 | Start | `launchctl load ~/Library/LaunchAgents/com.videowallpaper.plist` |
 | Restore original desktop picture | Stop, then `~/Applications/VideoWallpaper.app/Contents/MacOS/videowallpaper --restore-wallpaper` |
 | Uninstall | `make uninstall` |
-| Logs | `tail -f ~/Library/Logs/videowallpaper.log` (launch, wake and unlock lines include player state) |
+| Logs | `tail -f ~/Library/Logs/videowallpaper.log` (launch, wake and unlock lines include player state; `[rotation]` lines show each switch) |
 | Lint + test + compile | `make build` |
 
 ## What lives where
@@ -67,7 +68,40 @@ defaults write com.evanscott.videowallpaper FlashOverride -array-add "strobe.mov
 defaults delete com.evanscott.videowallpaper FlashOverride                          # remove all overrides
 ```
 
-Until rotation arrives, the newest *eligible* video (analysed and not Excluded) plays.
+
+## Rotation
+
+Every eligible video (analysed and not Excluded) takes turns:
+
+- **Dwell.** A video stays for at least 20 minutes of awake, unlocked time. Time asleep, locked, with the displays off or switched to another user doesn't count; time behind other windows does.
+- **When it switches.** After 20 minutes, the switch waits for a moment when the wallpaper is **Unseen** (displays asleep, locked, or every display covered by opaque windows) or **Veiled** (at least 95% of every display covered by windows for 30 s, e.g. a maximised translucent terminal), and is a 5 s crossfade. If neither happens, after an hour it switches anyway while visible, with a slow 20 s crossfade.
+- **What comes next.** A random video not yet played in this pass, among those within 0.08 mean luminance of the current one, so the brightness never jumps while you can see it. If no unplayed video is that close, the nearest one plays, but only while Unseen. Once every video has played, a new pass starts.
+- **New and removed videos.** A video you add plays next, at the next switch point (under the same brightness rule). Deleting the video that's playing replaces it at once; the Poster covers the gap.
+- **Light and Dark.** With `Mode` set to `dynamic` (the default when the appearance is Auto), Dark prefers the darker half of your videos by median luminance and Light the brighter half. An appearance change switches at the next Unseen or Veiled moment, not in front of you. With fewer than 4 videos `dynamic` plays them all; once the matching half has all played, it replays from that half.
+- **Low Power Mode** shows the Poster and doesn't switch; a deleted video is still replaced when it ends.
+
+Each switch is logged with its reason, the videos, the luminance difference and the fade: `[rotation] switch reason=dwell on=visibility from=lucyna.mp4 to=maomao.mp4 ΔL=0.016 fade=5s visibility=unseen …`. A switch that needs Unseen logs `waiting for Unseen` once.
+
+A video far from the others in brightness (a very dark one among bright ones) is only reached or left while Unseen, e.g. when you lock the Mac or the displays sleep.
+
+## Settings
+
+Preferences live in the `com.evanscott.videowallpaper` domain. `Mode` is read at every decision, so no restart is needed; a `FlashOverride` edit takes effect at the next launch or folder change.
+
+| Key | Values | Default |
+|---|---|---|
+| `Mode` | `all`, `light` (brighter half), `dark` (darker half), `dynamic` (follows the appearance) | `dynamic` when the appearance is Auto, otherwise `all` |
+| `FlashOverride` | Array of file names to play even though they flash (see above) | none |
+
+```sh
+defaults write com.evanscott.videowallpaper Mode -string dynamic
+defaults write com.evanscott.videowallpaper Mode -string all
+defaults delete com.evanscott.videowallpaper Mode          # back to the default
+defaults write com.evanscott.videowallpaper FlashOverride -array "storm.mp4"
+defaults read com.evanscott.videowallpaper                 # show the current settings
+```
+
+A new `Mode` takes effect at the next decision (within 5 s): a video outside the chosen half is replaced at the next Unseen or Veiled moment. The app reads, but never changes, the system's Auto appearance setting.
 
 ## Desktop picture
 
@@ -84,6 +118,15 @@ Restore only touches displays that show one of the app's Posters; a picture you 
 3. removes the app, the LaunchAgent, `~/Library/Application Support/VideoWallpaper/` and the `com.evanscott.videowallpaper` preferences, plus any legacy `.poster.jpg` in the video folder.
 
 Your videos in `~/Movies/LiveWallpaper/` and the log in `~/Library/Logs/` are left in place.
+
+## Design notes
+
+Why switches wait for Unseen or Veiled moments and stay within a brightness band:
+
+- **Abrupt luminance changes capture attention.** A sudden change in brightness pulls attention to it automatically, whatever you're doing (Yantis & Jonides, 1984, "Abrupt visual onsets and selective attention"). A dark-to-bright cut behind your work is exactly that, so large brightness jumps only happen while nobody can see the wallpaper.
+- **Gradual changes go unnoticed.** Changes that happen slowly enough are often missed altogether (Simons, Franconeri & Reimer, 2000, "Change blindness in the absence of a visual disruption"). Every switch is a crossfade, 5 s when the wallpaper is covered and 20 s in the rare visible fallback, between videos of similar mean luminance.
+- **Interruptions cost less at breakpoints.** Interrupting someone between tasks costs less than in the middle of one (Iqbal & Bailey, 2008, "Effects of intelligent notification management on users and their tasks"). Locking the Mac, the displays sleeping, or covering the desktop are natural breakpoints, so the Rotation prefers them, with a 20-minute minimum Dwell so the desktop feels settled rather than restless.
+- **Flashing.** The flash screener follows the WCAG 2.3.1 three-flashes-per-second general threshold, approximately (see above).
 
 ## How it works
 

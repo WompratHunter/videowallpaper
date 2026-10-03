@@ -2,13 +2,20 @@ import AppKit
 
 // MARK: - App delegate
 // Wiring: the only place modules meet. It connects system notifications and the shared tick to Player, Library,
-// WallpaperWindows and Visibility, and carries each module's callbacks to the others; decisions live in the modules.
+// WallpaperWindows, Visibility and the Rotation, and carries each module's callbacks to the others; decisions live in
+// the modules.
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
     private let library = Library(directory: AppFiles.wallpaperDirectory, analysisCache: AppFiles.analysisCacheFile)
     private lazy var windows = WallpaperWindows(player: player)
     private let visibility = Visibility()
+    /// Created at launch: the folder's videos then join the Rotation as their Analysis finishes, without counting as
+    /// newly added.
+    private lazy var rotation = RotationScheduler(
+        directory: AppFiles.wallpaperDirectory,
+        present: Set(Library.videoSnapshot(of: AppFiles.wallpaperDirectory).keys),
+        dwellScale: RotationScheduler.debugDwellScale)
     private var tickTimer: Timer?
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -21,9 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Analysis starts or player is built.
         library.isPowerSaving = ProcessInfo.processInfo.isLowPowerModeEnabled
         library.start()
+        rotation.start()
         // Unscreened videos never play, so until the first Analysis the underlay is a still: never black.
         let underlay = library.launchUnderlay(
-            toPlay: library.videoToPlay(), desktopPicture: DesktopPictures.mainScreenPicture())
+            toPlay: rotation.video, desktopPicture: DesktopPictures.mainScreenPicture())
         if let underlay { player.setPoster(underlay) }
         player.apply(.lowPower(ProcessInfo.processInfo.isLowPowerModeEnabled))
         windows.rebuild()
@@ -34,19 +42,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func connectModules() {
-        player.videoProvider = { [weak self] in self?.library.videoToPlay() }
+        player.videoProvider = { [weak self] in
+            self?.rotation.refresh(cause: "rebuild")
+            return self?.rotation.video
+        }
         library.flashOverrides = { UserDefaults.standard.stringArray(forKey: "FlashOverride") ?? [] }
+        // Every change of video (Rotation, Recovery or folder change) lands here, so the Poster always follows it.
         player.onVideoChange = { [weak self] url in self?.showPoster(for: url) }
         // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), because
-        // AVFoundation may otherwise keep playing the old open file.
-        // Until Rotation decides switches, a new newest video crossfades in.
-        library.onChange = { [weak self] video in
-            self?.player.folderChanged(newest: video, fade: Crossfade.quickDuration)
+        // AVFoundation may otherwise keep playing the old open file. A new video only joins the Rotation here.
+        library.onChange = { [weak self] in
+            guard let self else { return }
+            let change = self.rotation.refresh(cause: "folder-change")
+            self.player.folderChanged(toPlay: self.rotation.video, fade: change?.fade ?? Crossfade.quickDuration)
         }
         windows.onOcclusionChange = { [weak self] isAllOccluded in
             self?.player.apply(.allWindowsOccluded(isAllOccluded))
-            self?.visibility.apply(.everyWindowOccluded(isAllOccluded), cause: "occlusion")
+            self?.noteVisibility(.everyWindowOccluded(isAllOccluded), cause: "occlusion")
         }
+        connectRotation()
+    }
+
+    private func connectRotation() {
+        rotation.eligibleVideos = { [weak self] in self?.library.eligibleVideos() ?? [] }
+        rotation.visibility = { [weak self] in self?.visibility.state ?? .visible }
+        rotation.checkVeil = { [weak self] in self?.visibility.checkVeil() ?? .visible }
+        rotation.isPowerSaving = { ProcessInfo.processInfo.isLowPowerModeEnabled }
+        rotation.modeSetting = { UserDefaults.standard.string(forKey: "Mode") }
+        rotation.onSwitch = { [weak self] video, fade in self?.player.play(video, fade: fade) }
+        // An Unseen or Veiled moment is a switch point, acted on at once rather than at the next tick.
+        visibility.onChange = { [weak self] _ in self?.rotation.evaluate(cause: "visibility") }
+    }
+
+    /// Dwell hears of a lock, sleep or session change before Visibility reports it, so a switch on locking counts
+    /// Dwell only up to the lock.
+    private func noteVisibility(_ event: VisibilityEvent, cause: String) {
+        rotation.apply(event)
+        visibility.apply(event, cause: cause)
     }
 
     /// The Current video's Poster goes under the video and becomes the desktop picture on every screen.
@@ -63,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             self?.windows.reassert()
             self?.player.healthTick()
+            self?.rotation.evaluate(cause: "tick")
         }
         timer.tolerance = 2
         tickTimer = timer
@@ -108,14 +141,14 @@ extension AppDelegate {
     @objc private func screensSleep() {
         Log.write("screens-sleep", "pausing shared player")
         player.apply(.screensAsleep(true))
-        visibility.apply(.screensAsleep(true), cause: "screens-sleep")
+        noteVisibility(.screensAsleep(true), cause: "screens-sleep")
     }
 
     @objc private func screensWake() {
         windows.reassert()
         player.resetBackoff(on: .wake)
         player.apply(.screensAsleep(false))
-        visibility.apply(.screensAsleep(false), cause: "screens-wake")
+        noteVisibility(.screensAsleep(false), cause: "screens-wake")
         player.verifyPlayback(cause: "screens-wake")
     }
 
@@ -135,16 +168,16 @@ extension AppDelegate {
     }
 
     @objc private func sessionActive() {
-        visibility.apply(.sessionInactive(false), cause: "session-active")
+        noteVisibility(.sessionInactive(false), cause: "session-active")
         player.verifyPlayback(cause: "session-active")
     }
 
-    @objc private func sessionInactive() { visibility.apply(.sessionInactive(true), cause: "session-inactive") }
+    @objc private func sessionInactive() { noteVisibility(.sessionInactive(true), cause: "session-inactive") }
 
-    @objc private func screenLocked() { visibility.apply(.locked(true), cause: "lock") }
+    @objc private func screenLocked() { noteVisibility(.locked(true), cause: "lock") }
 
     @objc private func screenUnlocked() {
-        visibility.apply(.locked(false), cause: "unlock")
+        noteVisibility(.locked(false), cause: "unlock")
         player.resetBackoff(on: .unlock)
         player.verifyPlayback(cause: "unlock")
     }

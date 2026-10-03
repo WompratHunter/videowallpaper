@@ -6,7 +6,7 @@ import AVFoundation
 // a Poster layer that shares one decoded image. Tearing the player down therefore reveals the Poster, never black.
 
 final class Player {
-    /// Picks the video to play when a rebuild runs, so a renamed or deleted file is replaced ("newest wins").
+    /// Picks the video to play when a rebuild runs (the Rotation's Current video), so a deleted file is replaced.
     var videoProvider: () -> URL? = { nil }
     /// Called when a rebuild switches to a different video, so its Poster can be regenerated.
     var onVideoChange: (URL) -> Void = { _ in }
@@ -169,13 +169,13 @@ extension Player {
 
     /// The folder's set of videos changed: resets the backoff, and rebuilds promptly if a video became available
     /// while recovering, rather than waiting out the backoff timer.
-    func folderChanged(newest: URL?, fade: TimeInterval) {
+    func folderChanged(toPlay: URL?, fade: TimeInterval) {
         // Read before the reset: a rest after an exhausted backoff is still Recovery and must be retried now.
         let wasRecovering = isRecovering
         backoff.reset(on: .folderChange, isPowerSaving: gate.isPowerSaving)
         let currentExists = video.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let action = folderChangeAction(
-            newest: newest, current: video, currentExists: currentExists, isRecovering: wasRecovering,
+            toPlay: toPlay, current: video, currentExists: currentExists, isRecovering: wasRecovering,
             isPowerSaving: gate.isPowerSaving)
         switch action {
         case .keepPlaying:
@@ -190,7 +190,7 @@ extension Player {
         case .restNoVideo:
             restWithoutVideo(detail: "on folder-change")
         case .holdForPower:
-            Log.write("folder-change", "Low Power Mode: the newest video loads when it ends")
+            Log.write("folder-change", "Low Power Mode: the Current video loads when it ends")
         }
     }
 
@@ -213,7 +213,7 @@ extension Player {
 
     private func runRebuildPlan(verb: String, cause: String) {
         let plan = rebuildPlan(
-            newest: videoProvider(), current: video, saved: savedSeconds, isPowerSaving: gate.isPowerSaving)
+            toPlay: videoProvider(), current: video, saved: savedSeconds, isPowerSaving: gate.isPowerSaving)
         switch plan {
         case let .play(target, resumeAt):
             Log.write(cause, "\(verb) video=\(target.lastPathComponent) at=\(format(resumeAt))")

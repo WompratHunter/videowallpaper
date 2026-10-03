@@ -4,8 +4,12 @@ import AppKit
 // Everything the app writes lives under Application Support; the Wallpaper folder holds only the user's videos.
 
 enum AppFiles {
-    static let wallpaperDirectory = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
-    static let supportDirectory = FileManager.default
+    static let wallpaperDirectory = debugFolder
+        ?? URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
+    /// A debug run on its own folder keeps its cache and Posters beside it, so it can't prune the installed app's.
+    static let supportDirectory = debugFolder.map {
+        $0.deletingLastPathComponent().appendingPathComponent("\($0.lastPathComponent)-support", isDirectory: true)
+    } ?? FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("VideoWallpaper", isDirectory: true)
     static let posterDirectory = supportDirectory.appendingPathComponent("posters", isDirectory: true)
@@ -18,6 +22,17 @@ enum AppFiles {
     static let ownPictures = OwnPictures(
         posterDirectory: posterDirectory.resolvingSymlinksInPath().path,
         legacyPoster: legacyPoster.resolvingSymlinksInPath().path)
+
+    /// A manual test's Wallpaper folder, `VIDEOWALLPAPER_FOLDER`, honoured only by a `make debug` build.
+    private static var debugFolder: URL? {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["VIDEOWALLPAPER_FOLDER"].map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        }
+        #else
+        return nil
+        #endif
+    }
 }
 
 // MARK: - Desktop pictures per screen

@@ -6,8 +6,8 @@ import AppKit
 // and pruned) in LibraryPosters.swift.
 
 final class Library {
-    /// Called on the main queue when the set of eligible videos changes, with the video to play now.
-    var onChange: (URL?) -> Void = { _ in }
+    /// Called on the main queue when the set of eligible videos changes; the Rotation decides what plays.
+    var onChange: () -> Void = {}
     /// The `FlashOverride` file names, read each time eligibility is decided.
     var flashOverrides: () -> [String] = { [] }
     /// Low Power Mode: no new Analysis starts while on.
@@ -35,7 +35,7 @@ final class Library {
     }
 
     /// Removes the legacy Poster, loads the Analysis cache, seeds the settled videos, starts watching the folder and
-    /// analysing. Call once at launch, after setting `isPowerSaving` and before the first `videoToPlay()`.
+    /// analysing. Call once at launch, after setting `isPowerSaving` and before the first `eligibleVideos()`.
     func start() {
         removeLegacyPoster()
         analyses.loadCache()
@@ -43,12 +43,6 @@ final class Library {
         eligible = eligibleVideos()
         logVerdicts()
         queueAnalysis()
-    }
-
-    /// "Newest eligible video wins" until the Rotation exists.
-    func videoToPlay() -> URL? {
-        newestVideo(in: Dictionary(uniqueKeysWithValues: eligibleVideos().map { ($0.name, $0.modified) }))
-            .map { directory.appendingPathComponent($0) }
     }
 
     /// Settled videos whose Analysis is known and which aren't Excluded, with their mean luminance. The folder is
@@ -90,7 +84,7 @@ extension Library {
         guard now != eligible else { return }
         eligible = now
         Log.write(cause, "eligible videos=\(now.count)")
-        onChange(videoToPlay())
+        onChange()
     }
 
     /// Logs each video that is Excluded for flashing (or plays only by override) once, with its rate.

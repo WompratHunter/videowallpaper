@@ -12,7 +12,7 @@ VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 SUPPORT   := $(HOME)/Library/Application Support/VideoWallpaper
 BUNDLE_ID := com.evanscott.videowallpaper
 
-.PHONY: install uninstall build lint test smoke
+.PHONY: install uninstall build lint test smoke debug
 
 # `install` writes a new inode, so the running binary is never overwritten in place.
 install: build
@@ -43,6 +43,13 @@ build: lint test smoke
 	@mkdir -p $(BUILD_DIR)
 	swiftc -O -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
 	@echo "✓ Built $(BUILD_DIR)/videowallpaper"
+
+# A separate binary for manual tests, never installed: only it honours VIDEOWALLPAPER_FOLDER and
+# VIDEOWALLPAPER_DWELL_SCALE (see the Rotation ticket's Comments).
+debug:
+	@mkdir -p $(BUILD_DIR)
+	swiftc -D DEBUG -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o "$(BUILD_DIR)/videowallpaper-debug"
+	@echo "✓ Built $(BUILD_DIR)/videowallpaper-debug"
 
 # The agent is unloaded first so the app can't set its Poster again; then the original desktop pictures are
 # restored while the Posters they replace still exist. A failed restore is reported but doesn't block removal.
