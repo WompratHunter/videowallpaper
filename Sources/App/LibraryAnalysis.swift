@@ -1,8 +1,9 @@
 import Foundation
 
 // MARK: - Analysis queue
-// Every settled video is analysed once, in the background (utility QoS, one at a time, none in Low Power Mode): mean luminance, flash rate and a Poster from a representative frame. Results are cached in Application
-// Support (see AnalysisCache.swift) and pruned on each folder scan.
+// Every settled video is analysed once, in the background (utility QoS, one at a time, none in Low Power Mode):
+// mean luminance, flash rate and a Poster from a representative frame. Results are cached in Application Support
+// (see AnalysisCache.swift) and pruned on each folder scan.
 
 /// Unchecked because its state is only touched on the main queue: the background job captures plain values and
 /// hands its result back with `DispatchQueue.main.async`.

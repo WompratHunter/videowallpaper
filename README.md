@@ -59,7 +59,7 @@ The flash check is an **approximate screener** modelled on the WCAG 2.3.1 genera
 
 It can miss content that a person with photosensitive epilepsy would react to, and can flag content that is fine. Don't rely on it to make video safe for someone at risk.
 
-To play an Excluded video anyway, add its file name to `FlashOverride`. The setting is read whenever the app decides what to play:
+To play an Excluded video anyway, add its file name to `FlashOverride`. It takes effect the next time the app starts or the folder changes (adding, removing or touching a video):
 
 ```sh
 defaults write com.evanscott.videowallpaper FlashOverride -array "storm.mp4"
