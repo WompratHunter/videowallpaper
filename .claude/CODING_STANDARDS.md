@@ -93,3 +93,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 ## Makefile
 
 - Quote every path in recipes (`"$(APP)"`); destructive recipes (`rm -rf`, `defaults delete`) name explicit app-owned paths only, with no globs, and guard against an empty or relative `HOME`
+
+## Invariants
+
+- Never black: in every state (launch, Analysis pending, Recovery, Low Power Mode, fades, no eligible video) a Poster or a playing video is on screen; the black window background is only acceptable before any Poster has ever existed
