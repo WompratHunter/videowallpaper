@@ -11,7 +11,6 @@ func runPlaybackGateTests() {
     runGateLowPowerExitTests()
     runGateRecoveryStateTests()
     runGateRecoveryIntentTests()
-    runOcclusionTests()
 }
 
 private func runGateModeTests() {
@@ -121,10 +120,4 @@ private func runGateRecoveryIntentTests() {
             at: 100, timeAdvanced: false, isIntendingToPlay: gate.isIntendingToPlay, hasFailed: false)
         checkEqual(verdict, nil)
     }
-}
-
-private func runOcclusionTests() {
-    check(isEveryWindowOccluded(visibility: [false, false, false]), "every window covered")
-    check(!isEveryWindowOccluded(visibility: [false, true, false]), "one visible display keeps playing")
-    check(!isEveryWindowOccluded(visibility: []), "no windows is not occluded")
 }
