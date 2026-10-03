@@ -52,7 +52,9 @@ final class Player {
 
     /// Switches to `url` with a crossfade of `fade` seconds; zero, or a player nobody can see, means a cut.
     func play(_ url: URL, fade: TimeInterval) {
-        crossfader.request(url, duration: fade, current: video, isPlaying: gate.isIntendingToPlay)
+        // A torn-down or recovering player has no outgoing video on screen to fade from, so it cuts too.
+        let isPlaying = gate.isIntendingToPlay && queuePlayer != nil && !isRecovering
+        crossfader.request(url, duration: fade, current: video, isPlaying: isPlaying)
     }
 
     private func show(_ url: URL, at seconds: Double = 0) {
