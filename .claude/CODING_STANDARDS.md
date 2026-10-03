@@ -1,6 +1,6 @@
 # Coding Standards
 
-Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`. App code lives in `Sources/App/` (entry file `main.swift`); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
+Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`, which builds every `Sources/App/*.swift` and `Sources/Core/*.swift` file (entry file `Sources/App/main.swift`); SwiftLint covers `Sources/` and `Tests/`. App code is split into modules (see Code Organisation); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
 
 ## Language & Platform
 
@@ -36,8 +36,17 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 
 ## Code Organisation
 
-- Use `// MARK: - Section` to divide logical sections within a file; match existing markers (`Helpers`, `Window management`, `Folder watching`, etc.)
-- Keep related logic together rather than splitting into multiple files unless a type exceeds ~150 lines
+- The app is a set of deep modules, each a small interface over most of the logic. Modules never call each other: `Sources/App/main.swift` (the app delegate) is the only place they meet, connecting system notifications, the shared 5 s tick and settings reads to each module and carrying one module's callbacks to another
+  - **Player** (`Player.swift`, `PlayerLayers.swift`, `PlayerState.swift`): the shared player, the layers in every window, health checks and Recovery
+  - **Library** (`Library.swift`, `LibraryPosters.swift`): the Wallpaper folder watch, settle check, the video to play and its Posters
+  - **WallpaperWindows** (`WallpaperWindows.swift`): one desktop-level window per screen, hosting the Player's layers, and occlusion
+  - **Visibility** (`Visibility.swift`): Unseen, Veiled or Visible, with a change callback
+  - `DesktopPictures.swift`: app paths (`AppFiles`) and the system desktop picture, used by the wiring
+- A module talks to the outside through its methods and `on…` callback properties that the wiring sets; it does not hold references to other modules (a module may be given another as a dependency only to host it, as WallpaperWindows hosts the Player's layers)
+- A module may span several files (one type plus extensions, or small internal helper types) when it grows past ~150 lines per type or ~400 per file; name the files after the module (`Player…`, `Library…`)
+- Core logic is split per area the same way (`Recovery`, `PlaybackGate`, `PlayerStateReport` for Player; `WallpaperFolder`, `PosterFiles`, `Flash` for Library; `VisibilityClassification`; `Rotation`; `Footprint` for desktop-picture record and restore; `Log`), each with its own test suite
+- File names must be unique across `Sources/` and `Tests/`, because `swiftc` compiles them as one module
+- Use `// MARK: - Section` to divide logical sections within a file; match existing markers (`Folder watching`, `Recovery`, `Notifications`, etc.)
 - Free functions are fine for stateless helpers (`newestVideo(in:)`)
 
 ## AppKit / Window Layer
@@ -70,7 +79,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 
 - Harness: a plain `swiftc`-compiled runner in `Tests/` — no SwiftPM, no XCTest. `make test` compiles `Sources/Core/*.swift` with `Tests/*.swift` into `.build/tests` and runs it
 - Use `check(_:_:)` / `checkEqual(_:_:)` from `Tests/Check.swift`; the runner exits non-zero if any check fails
-- One suite file per area (`Tests/<Area>Tests.swift`) exposing `run<Area>Tests()`, registered in `Tests/main.swift`
+- One suite file per Core area (`Tests/<Area>Tests.swift`) exposing `run<Area>Tests()`, registered in `Tests/main.swift`; add checks to the matching suite rather than a new one
 - The seam is `Sources/Core/`: Foundation-only pure functions and value types. Anything that is a decision (Recovery, backoff, settle, flash counting, Rotation pick, visibility, log formatting) belongs there and must be tested; AppKit/AVFoundation code only gathers inputs and applies results
 - State transitions belong in Core too: when a decision depends on state the app also mutates (e.g. reading "is recovering" vs resetting the backoff), Core takes the current state and returns the action plus the next state, so ordering is tested; app code only applies the returned action
 - Tests assert the decision returned for given inputs, not internal state or call order; inject clocks and RNGs rather than reading them
