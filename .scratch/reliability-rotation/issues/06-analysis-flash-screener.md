@@ -62,3 +62,9 @@
   - Drop a strobing clip (e.g. generate one with `make smoke`-style code, or any >3/s video). It logs `flash excluded video=… flashes=N/s` and doesn't play. Then `defaults write com.evanscott.videowallpaper FlashOverride -array "<name>"` and touch the folder (or drop another file): it logs `flash override …` and plays.
   - Delete a video: its cache entry is pruned.
   - In Low Power Mode, a newly dropped video is not analysed until Low Power Mode ends.
+  - Delete the cache and Posters, then relaunch: the screen shows the current desktop picture (log `launch no screened video yet; underlay=…`), never black, until the first video is analysed and plays.
+- Second review, fixed:
+  - Never black during the first Analysis: launch underlay chosen by Core `underlayCandidates` (tested), unscreened videos still never play.
+  - A Low Power Mode cancellation reported by AVFoundation as its own error is re-queued, not marked failed.
+  - README: a `FlashOverride` edit takes effect at the next launch or folder change, not immediately.
+- Second review, verified: flash rate is transitions / 2 in any half-open 1 s window per region (122 regions: full frame + 121 overlapping 2×2 of 12×12), ≤3 eligible, >3 Excluded, 0.10 change with darker state < 0.80; utility QoS, one at a time, LPM cancel/skip; cache keyed path + size + mtime, version mismatch re-analyses, prune touches only cache entries and app-named Posters; smoke clips deleted, deterministic.
