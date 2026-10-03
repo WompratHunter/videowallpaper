@@ -105,8 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Window management
 
     private func buildWindows() {
-        windows.forEach { $0.close() }
+        // Swapped out before closing: a closing window's occlusion change must not count as the desktop covered.
+        let old = windows
         windows = NSScreen.screens.map { WallpaperWindow(screen: $0, player: player) }
+        old.forEach { $0.close() }
         // orderFront, not makeKeyAndOrderFront: a desktop window must never take keyboard focus.
         windows.forEach { $0.orderFront(nil) }
         applyOcclusion(change: "windows=\(windows.count)")
