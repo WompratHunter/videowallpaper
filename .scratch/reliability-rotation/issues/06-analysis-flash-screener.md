@@ -4,12 +4,49 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** ready-for-review
 
-- [ ] Flash counting is a pure core function: every frame, reduced resolution, 12×12 grid with overlapping 2×2 neighbourhoods plus full frame; flash = opposing relative-luminance changes ≥ 0.10 with darker state < 0.80; max in any 1 s window
-- [ ] sRGB→linear via 256-entry lookup table; BT.709 weights
-- [ ] Tests: synthetic square waves at 2/3/4/6 Hz classify correctly; slow drift not counted; a small-region flash is caught; tiers + override; Poster-frame choice; cache encode/decode/prune
-- [ ] Smoke test: analyser on a generated 2 s clip with a known flash rate gives the expected classification
-- [ ] The user's rain/lightning video measures ≤ 3/s and stays eligible (verify on the real file)
-- [ ] README: honest wording — approximate screener for WCAG 2.3.1 general flash, luminance only, no red-flash test, not a conformance assessment; `FlashOverride` usage
-- [ ] `make build` green; rebase on main before review; `make install` after merge
+- [x] Flash counting is a pure core function: every frame, reduced resolution, 12×12 grid with overlapping 2×2 neighbourhoods plus full frame; flash = opposing relative-luminance changes ≥ 0.10 with darker state < 0.80; max in any 1 s window
+- [x] sRGB→linear via 256-entry lookup table; BT.709 weights
+- [x] Tests: synthetic square waves at 2/3/4/6 Hz classify correctly; slow drift not counted; a small-region flash is caught; tiers + override; Poster-frame choice; cache encode/decode/prune
+- [x] Smoke test: analyser on a generated 2 s clip with a known flash rate gives the expected classification
+- [x] The user's rain/lightning video measures ≤ 3/s and stays eligible (verify on the real file)
+- [x] README: honest wording — approximate screener for WCAG 2.3.1 general flash, luminance only, no red-flash test, not a conformance assessment; `FlashOverride` usage
+- [x] `make build` green; rebase on main before review; `make install` after merge (install is the user's step)
+
+## Comments
+
+- Built.
+  - Core `Flash.swift`: sRGB→linear 256-entry table, BT.709 `relativeLuminance`, `FlashGrid` (12×12 cell means from a BGRA buffer; the full frame plus 121 overlapping 2×2 neighbourhoods), `TransitionDetector`, `FlashScreener` (streams frames, max transitions per region in any 1 s window, flashes = complete pairs), `posterFrameIndex`, `flashVerdict` (eligible / excluded / overridden).
+  - Core `AnalysisCache.swift`: the cache index (path → size + mtime ms + Analysis, versioned JSON, prune), `screenEligible` and `videosToAnalyse` (newest first).
+  - App `LibraryAnalyser.swift`: AVAssetReader decode at 192×108 BGRA into the screener; exact-time Poster frame. AVFoundation only, so the smoke test compiles it alone.
+  - App `LibraryAnalysis.swift`: `LibraryAnalysisQueue`. A detached utility task, one at a time, none started while `isPowerSaving`. It saves the Poster, then the cache, and logs `analysis video=… luminance=… flashes=…/s poster=…s took=…s`. A failed file is not retried until it changes.
+  - `Library`: `videoToPlay()` is the newest *eligible* video; `eligibleVideos()` gives name, mtime and luminance; `flashOverrides` and `isPowerSaving` inputs. `onChange` fires only when the eligible set changes. Each Excluded (or overridden) video is logged once with its rate.
+  - `LibraryPosters`: the export fallback uses the analysed Poster time instead of 5 s. A used saved Poster now also prunes stale ones, so the old 5 s Posters go.
+- The transition algorithm (the prototype's `transitions()` was rewritten). A change is measured from the last extreme, not from the previous frame, so a fade spread over frames counts once. Before the first transition the running min and max are tracked. A rise needs `value − min ≥ 0.10` with `min < 0.80`; a fall needs `max − value ≥ 0.10` with `value < 0.80`. There is a 1e-9 tolerance, so exactly 0.10 counts. A window holds transitions less than 1 s apart, and flashes = transitions / 2 (integer).
+- Measured on the user's videos (read only, `.build/smoke ~/Movies/LiveWallpaper/*.mp4`, -O build: about 1 s CPU in total for all four):
+  - capybara-anime-sunset-drive: luminance 0.299, 2 flashes/s, Poster at 5.70 s, 0.7 s wall.
+  - final-fantasy-vii-main-menu: 0.037, 0/s, 0.65 s, 3.2 s.
+  - lucyna-and-cat-rainy-neon-night (rain/lightning): 0.161, **1/s**, eligible. This matches the prototype's 1.0/s and 0.16.
+  - maomao-the-apothecary-diaries: 0.177, 0/s, 1.22 s, 6.4 s.
+- Tested (`make test`): the LUT and weights; grid and regions from a padded BGRA buffer; full-frame square waves at 2, 3, 4 and 6 Hz × 24, 25, 30 and 60 fps; the 0.10 and 0.80 thresholds; slow drift and a 0.5 Hz pulse not counted; rain-like noise with lightning every 2 s at 1/s; a 2.8% region flash at 3 and 6 Hz caught; the Poster-frame choice (dark intro skipped, ties earliest); verdict tiers and override (exact file name); cache lookup, replace/touch, JSON round trip, wrong version, prune; eligibility; Analysis order.
+- Smoke (`make smoke`, now part of `make build`): the real analyser on generated 2 s 30 fps H.264 clips. 3 Hz gives 3/s (eligible) and 5 Hz gives 5/s (Excluded). Clips go to the temp dir and are deleted.
+- Wiring in `main.swift` (4 lines):
+  - `Library(directory:analysisCache:)`.
+  - `library.flashOverrides = { UserDefaults.standard.stringArray(forKey: "FlashOverride") ?? [] }` in `connectModules`.
+  - `library.isPowerSaving = …` before `library.start()`.
+  - `self?.library.isPowerSaving = isOn` in `powerStateChanged`.
+- Also: `AppFiles.analysisCacheFile` (one line in `DesktopPictures.swift`); `Tests/main.swift` registers `runAnalysisCacheTests()`; `Makefile` gains `smoke`.
+- Deviations and interpretations:
+  - An unanalysed video is not eligible, since it hasn't been screened. On the first launch after install the cache is empty, so the newest video plays only after its Analysis (a few seconds; Analysis goes newest first). Until then the windows have no Poster and show black, once. In Low Power Mode with an empty cache nothing plays until it ends.
+  - The Poster file name now includes the frame choice (golden value in `PosterFilesTests` updated), so analysed Posters get new URLs. macOS would otherwise keep showing its cached 5 s frame as the desktop picture.
+  - A Poster is saved for Excluded videos too, so an override plays with a Poster at once.
+  - The flash rate is an integer (complete pairs). A window with 7 transitions counts as 3 flashes.
+  - Folder changes reach the player only when the *eligible* set changes. A newly dropped video triggers `onChange` once analysed, not when it settles.
+- Manual checks after `make install`:
+  - The log shows four `analysis video=…` lines on first launch with values close to those above, then `analysis eligible videos=4`. Next launch shows no `analysis` lines, because the cache is used.
+  - `~/Library/Application Support/VideoWallpaper/analysis-cache.json` exists with 4 entries. `posters/` holds 4 new-named Posters, and the old ones are gone after the first Poster is shown.
+  - The Lock screen and desktop picture show the new representative frame (not the 5 s frame).
+  - Drop a strobing clip (e.g. generate one with `make smoke`-style code, or any >3/s video). It logs `flash excluded video=… flashes=N/s` and doesn't play. Then `defaults write com.evanscott.videowallpaper FlashOverride -array "<name>"` and touch the folder (or drop another file): it logs `flash override …` and plays.
+  - Delete a video: its cache entry is pruned.
+  - In Low Power Mode, a newly dropped video is not analysed until Low Power Mode ends.
