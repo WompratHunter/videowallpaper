@@ -11,7 +11,7 @@ VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 
 .PHONY: install uninstall build lint test
 
-# `build` compiles into .build/ only; `install` is the sole target that touches the installed app.
+# `install` writes a new inode, so the running binary is never overwritten in place.
 install: build
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(VIDEO_DIR) $(HOME)/Library/Logs
 	@cp Info.plist $(APP)/Contents/Info.plist
