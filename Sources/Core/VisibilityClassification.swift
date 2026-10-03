@@ -56,7 +56,7 @@ func classifyVisibility(_ inputs: VisibilityInputs) -> VisibilityState {
 // MARK: - Coverage
 
 /// An axis-aligned rectangle in global screen coordinates. Core stays Foundation-only, where CGRect has no geometry.
-struct Rect: Equatable {
+struct ScreenRect: Equatable {
     let minX: Double
     let minY: Double
     let maxX: Double
@@ -71,11 +71,11 @@ struct Rect: Equatable {
 
     var area: Double { max(0, maxX - minX) * max(0, maxY - minY) }
 
-    func clipped(to other: Rect) -> Rect? {
+    func clipped(to other: ScreenRect) -> ScreenRect? {
         let left = max(minX, other.minX), right = min(maxX, other.maxX)
         let bottom = max(minY, other.minY), top = min(maxY, other.maxY)
         guard right > left, top > bottom else { return nil }
-        return Rect(minX: left, minY: bottom, width: right - left, height: top - bottom)
+        return ScreenRect(minX: left, minY: bottom, width: right - left, height: top - bottom)
     }
 }
 
@@ -84,19 +84,19 @@ struct ListedWindow: Equatable {
     let layer: Int
     let alpha: Double
     /// The same coordinate space as the screens passed to `leastCoverage`.
-    let bounds: Rect
+    let bounds: ScreenRect
 }
 
 /// The coverage of the least-covered screen by on-screen normal-layer windows. Translucency can't be told apart
 /// (Ghostty reports alpha 1), which is why this only ever yields Veiled, never Unseen.
-func leastCoverage(of windows: [ListedWindow], screens: [Rect]) -> Double {
+func leastCoverage(of windows: [ListedWindow], screens: [ScreenRect]) -> Double {
     let covering = windows.filter { $0.layer == 0 && $0.alpha > 0 }.map(\.bounds)
     return screens.map { coverageFraction(of: covering, over: $0) }.min() ?? 0
 }
 
 /// The fraction of `screen` covered by the union of `rects`; overlaps count once and parts off the screen not at
 /// all. Sweeps the vertical strips between rect edges, merging the covered spans in each.
-func coverageFraction(of rects: [Rect], over screen: Rect) -> Double {
+func coverageFraction(of rects: [ScreenRect], over screen: ScreenRect) -> Double {
     guard screen.area > 0 else { return 0 }
     let clipped = rects.compactMap { $0.clipped(to: screen) }
     let edges = Set(clipped.flatMap { [$0.minX, $0.maxX] }).sorted()
@@ -156,16 +156,43 @@ struct VeilTracker {
         lastSample = now
     }
 
-    mutating func reset() {
-        coveredSince = nil
-        lastSample = nil
-    }
-
     func coveredFor(at now: Date) -> TimeInterval? {
         guard let since = coveredSince, let last = lastSample, now.timeIntervalSince(last) <= Self.maxSampleGap else {
             return nil
         }
         return now.timeIntervalSince(since)
+    }
+}
+
+// MARK: - Visibility tracking
+
+/// The current state and what moves it: notification events, coverage samples and the expiry of the last sample.
+/// Each step returns the new state only when it changed, so the app logs and reports exactly the changes.
+struct VisibilityTracker {
+    private(set) var state: VisibilityState = .visible
+    private var inputs = VisibilityInputs()
+    private var veil = VeilTracker()
+
+    /// Veiled can't override Unseen, so the window list isn't worth reading then.
+    var needsCoverageSample: Bool { classifyVisibility(inputs) != .unseen }
+
+    mutating func apply(_ event: VisibilityEvent, at now: Date) -> VisibilityState? {
+        inputs.apply(event)
+        return refresh(at: now)
+    }
+
+    mutating func sample(coverage: Double, at now: Date) -> VisibilityState? {
+        veil.sample(coverage: coverage, at: now)
+        return refresh(at: now)
+    }
+
+    /// Re-reads the coverage clock: once the last sample is older than `VeilTracker.maxSampleGap`, Veiled lapses.
+    mutating func refresh(at now: Date) -> VisibilityState? {
+        inputs.coveredFor = veil.coveredFor(at: now)
+        let next = classifyVisibility(inputs)
+        guard next != state else { return nil }
+        state = next
+        return next
     }
 }
 

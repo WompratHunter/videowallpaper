@@ -10,36 +10,50 @@ final class Visibility {
     /// Called on the main queue whenever `state` changes.
     var onChange: (VisibilityState) -> Void = { _ in }
 
-    private(set) var state: VisibilityState = .visible
-    private var inputs = VisibilityInputs()
-    private var veil = VeilTracker()
+    var state: VisibilityState { tracker.state }
+    private var tracker = VisibilityTracker()
+    private var veilExpiry: DispatchWorkItem?
 
-    /// Main queue only. The coverage clock is re-read so a stale sample can't keep the state Veiled.
+    /// Main queue only.
     func apply(_ event: VisibilityEvent, cause: String) {
-        inputs.apply(event)
-        inputs.coveredFor = veil.coveredFor(at: Date())
-        update(cause: cause, detail: "\(event)")
+        report(tracker.apply(event, at: Date()), cause: cause, detail: "\(event)")
     }
 
     /// Samples window coverage and returns the state that follows. Call it on every tick while a switch is due:
-    /// Veiled needs 30 s of continuous samples. Skips the window list while Unseen, which Veiled can't override.
+    /// Veiled needs 30 s of continuous samples. Main queue only.
     @discardableResult
     func checkVeil() -> VisibilityState {
-        guard classifyVisibility(inputs) != .unseen else { return state }
-        let now = Date()
-        let coverage = Self.currentCoverage()
-        veil.sample(coverage: coverage, at: now)
-        inputs.coveredFor = veil.coveredFor(at: now)
-        update(cause: "veil", detail: "coverage=\(Self.percent(coverage))")
+        sampleCoverage()
         return state
     }
 
-    private func update(cause: String, detail: String) {
-        let next = classifyVisibility(inputs)
-        guard next != state else { return }
-        Log.write(cause, "visibility=\(next.rawValue) was=\(state.rawValue) \(detail)")
-        state = next
-        onChange(next)
+    /// Returns the coverage sampled, or nil when Unseen made the window list not worth reading.
+    @discardableResult
+    private func sampleCoverage() -> Double? {
+        guard tracker.needsCoverageSample else { return nil }
+        let coverage = Self.currentCoverage()
+        let change = tracker.sample(coverage: coverage, at: Date())
+        report(change, cause: "veil", detail: "coverage=\(Self.percent(coverage))")
+        scheduleVeilExpiry()
+        return coverage
+    }
+
+    /// Once callers stop asking, the last sample stops proving coverage; re-check just after it lapses so a stale
+    /// Veiled is reported as the change it is.
+    private func scheduleVeilExpiry() {
+        veilExpiry?.cancel()
+        let expiry = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.report(self.tracker.refresh(at: Date()), cause: "veil", detail: "no recent coverage sample")
+        }
+        veilExpiry = expiry
+        DispatchQueue.main.asyncAfter(deadline: .now() + VeilTracker.maxSampleGap + 1, execute: expiry)
+    }
+
+    private func report(_ change: VisibilityState?, cause: String, detail: String) {
+        guard let change else { return }
+        Log.write(cause, "visibility=\(change.rawValue) \(detail)")
+        onChange(change)
     }
 
     // MARK: - Window list
@@ -48,9 +62,12 @@ final class Visibility {
     /// bounds share the global top-left-origin space, so no flipping is needed.
     private static func currentCoverage() -> Double {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+        guard let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            Log.write("veil", "window list unavailable; counting the desktop as uncovered")
+            return 0
+        }
         let windows = info.compactMap(listedWindow)
-        let screens = NSScreen.screens.compactMap { screen -> Rect? in
+        let screens = NSScreen.screens.compactMap { screen -> ScreenRect? in
             guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
                 return nil
             }
@@ -67,8 +84,8 @@ final class Visibility {
         return ListedWindow(layer: layer, alpha: alpha, bounds: rect(bounds))
     }
 
-    private static func rect(_ cg: CGRect) -> Rect {
-        Rect(minX: Double(cg.minX), minY: Double(cg.minY), width: Double(cg.width), height: Double(cg.height))
+    private static func rect(_ cg: CGRect) -> ScreenRect {
+        ScreenRect(minX: Double(cg.minX), minY: Double(cg.minY), width: Double(cg.width), height: Double(cg.height))
     }
 
     private static func percent(_ fraction: Double) -> String {
@@ -79,14 +96,14 @@ final class Visibility {
 // MARK: - Veil probe
 
 extension Visibility {
-    /// `--check-veil`: samples coverage every 5 s for 45 s and logs each sample, so Veiled can be checked
-    /// by hand before anything in the app asks for it. Runs in its own process, never touching the running app.
+    /// `--check-veil`: samples coverage every 5 s for 45 s and logs each sample, so Veiled can be checked by hand
+    /// before anything in the app asks for it. Runs in its own process, never touching the running app.
     static func runVeilProbe() -> Never {
         let probe = Visibility()
         var remaining = 9
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
-            let state = probe.checkVeil()
-            Log.write("veil-probe", "coverage=\(percent(currentCoverage())) state=\(state.rawValue)")
+            let coverage = probe.sampleCoverage().map(Self.percent) ?? "n/a"
+            Log.write("veil-probe", "coverage=\(coverage) state=\(probe.state.rawValue)")
             remaining -= 1
             if remaining == 0 { exit(0) }
         }

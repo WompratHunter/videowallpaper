@@ -8,6 +8,7 @@ func runVisibilityClassificationTests() {
     runCoverageTests()
     runCoveringWindowTests()
     runVeilTrackerTests()
+    runVisibilityTrackerTests()
     runAllowedTransitionTests()
 }
 
@@ -44,40 +45,41 @@ private func runClassificationTests() {
 }
 
 private func runCoverageTests() {
-    let screen = Rect(minX: 0, minY: 0, width: 100, height: 100)
+    let screen = ScreenRect(minX: 0, minY: 0, width: 100, height: 100)
     checkEqual(coverageFraction(of: [], over: screen), 0)
     checkEqual(coverageFraction(of: [screen], over: screen), 1)
-    checkEqual(coverageFraction(of: [Rect(minX: 0, minY: 0, width: 50, height: 100)], over: screen), 0.5)
+    checkEqual(coverageFraction(of: [ScreenRect(minX: 0, minY: 0, width: 50, height: 100)], over: screen), 0.5)
     // Overlap is counted once.
-    let left = Rect(minX: 0, minY: 0, width: 60, height: 100)
-    let right = Rect(minX: 40, minY: 0, width: 60, height: 100)
+    let left = ScreenRect(minX: 0, minY: 0, width: 60, height: 100)
+    let right = ScreenRect(minX: 40, minY: 0, width: 60, height: 100)
     checkEqual(coverageFraction(of: [left, right], over: screen), 1)
-    let stacked = [Rect(minX: 0, minY: 0, width: 50, height: 50), Rect(minX: 0, minY: 0, width: 50, height: 50)]
-    checkEqual(coverageFraction(of: stacked, over: screen), 0.25)
+    let quarter = ScreenRect(minX: 0, minY: 0, width: 50, height: 50)
+    checkEqual(coverageFraction(of: [quarter, quarter], over: screen), 0.25)
     // Parts off the screen don't count.
-    checkEqual(coverageFraction(of: [Rect(minX: -50, minY: 0, width: 100, height: 100)], over: screen), 0.5)
-    checkEqual(coverageFraction(of: [Rect(minX: 200, minY: 0, width: 100, height: 100)], over: screen), 0)
+    checkEqual(coverageFraction(of: [ScreenRect(minX: -50, minY: 0, width: 100, height: 100)], over: screen), 0.5)
+    checkEqual(coverageFraction(of: [ScreenRect(minX: 200, minY: 0, width: 100, height: 100)], over: screen), 0)
     // An L-shape from two windows: 100x10 strip plus 10x90 column.
-    let lShape = [Rect(minX: 0, minY: 0, width: 100, height: 10), Rect(minX: 0, minY: 0, width: 10, height: 100)]
-    checkEqual(coverageFraction(of: lShape, over: screen), 0.19)
+    let strip = ScreenRect(minX: 0, minY: 0, width: 100, height: 10)
+    let column = ScreenRect(minX: 0, minY: 0, width: 10, height: 100)
+    checkEqual(coverageFraction(of: [strip, column], over: screen), 0.19)
     // A maximized window below a 3% menu bar.
-    checkEqual(coverageFraction(of: [Rect(minX: 0, minY: 3, width: 100, height: 97)], over: screen), 0.97)
+    checkEqual(coverageFraction(of: [ScreenRect(minX: 0, minY: 3, width: 100, height: 97)], over: screen), 0.97)
     // Screens elsewhere in global coordinates.
-    let second = Rect(minX: 100, minY: 0, width: 100, height: 100)
-    checkEqual(coverageFraction(of: [Rect(minX: 100, minY: 0, width: 100, height: 50)], over: second), 0.5)
-    checkEqual(coverageFraction(of: [screen], over: Rect(minX: 0, minY: 0, width: 0, height: 0)), 0)
+    let second = ScreenRect(minX: 100, minY: 0, width: 100, height: 100)
+    checkEqual(coverageFraction(of: [ScreenRect(minX: 100, minY: 0, width: 100, height: 50)], over: second), 0.5)
+    checkEqual(coverageFraction(of: [screen], over: ScreenRect(minX: 0, minY: 0, width: 0, height: 0)), 0)
 }
 
 private func runCoveringWindowTests() {
-    let screen = Rect(minX: 0, minY: 0, width: 100, height: 100)
-    let full = Rect(minX: 0, minY: 0, width: 100, height: 100)
+    let screen = ScreenRect(minX: 0, minY: 0, width: 100, height: 100)
+    let full = ScreenRect(minX: 0, minY: 0, width: 100, height: 100)
     checkEqual(leastCoverage(of: [ListedWindow(layer: 0, alpha: 1, bounds: full)], screens: [screen]), 1)
     // Panels, menus and the Dock are not normal-layer windows.
     checkEqual(leastCoverage(of: [ListedWindow(layer: 25, alpha: 1, bounds: full)], screens: [screen]), 0)
     // A fully transparent window draws nothing.
     checkEqual(leastCoverage(of: [ListedWindow(layer: 0, alpha: 0, bounds: full)], screens: [screen]), 0)
     // Every screen must be covered: the least-covered one decides.
-    let second = Rect(minX: 100, minY: 0, width: 100, height: 100)
+    let second = ScreenRect(minX: 100, minY: 0, width: 100, height: 100)
     checkEqual(leastCoverage(of: [ListedWindow(layer: 0, alpha: 1, bounds: full)], screens: [screen, second]), 0)
     checkEqual(leastCoverage(of: [], screens: []), 0)
 }
@@ -107,11 +109,38 @@ private func runVeilTrackerTests() {
     checkEqual(gappy.coveredFor(at: start + 40), 0)
     // A stale last sample says nothing about now.
     checkEqual(gappy.coveredFor(at: start + 40 + VeilTracker.maxSampleGap + 1), nil)
+}
 
-    var reset = VeilTracker()
-    reset.sample(coverage: 1, at: start)
-    reset.reset()
-    checkEqual(reset.coveredFor(at: start), nil)
+private func runVisibilityTrackerTests() {
+    let start = Date(timeIntervalSince1970: 1_000)
+    var tracker = VisibilityTracker()
+    checkEqual(tracker.state, .visible)
+    check(tracker.needsCoverageSample, "Visible can become Veiled")
+
+    // Only changes are reported.
+    checkEqual(tracker.apply(.screensAsleep(true), at: start), .unseen)
+    checkEqual(tracker.apply(.locked(true), at: start), nil)
+    check(!tracker.needsCoverageSample, "nothing to sample while Unseen")
+    checkEqual(tracker.apply(.screensAsleep(false), at: start), nil)
+    checkEqual(tracker.apply(.locked(false), at: start), .visible)
+
+    // Covered on every tick for 30 s: Veiled on the tick that reaches it.
+    var veiledAt: Date?
+    for offset in stride(from: 0.0, through: 30, by: 5) where veiledAt == nil {
+        if tracker.sample(coverage: 0.97, at: start + offset) == .veiled { veiledAt = start + offset }
+    }
+    checkEqual(veiledAt, start + 30)
+
+    // Once nobody samples, Veiled lapses instead of going stale.
+    checkEqual(tracker.refresh(at: start + 30 + VeilTracker.maxSampleGap), nil)
+    checkEqual(tracker.refresh(at: start + 30 + VeilTracker.maxSampleGap + 1), .visible)
+
+    // An Unseen event overrides Veiled, and leaving it returns to what coverage says.
+    var covered = VisibilityTracker()
+    for offset in stride(from: 0.0, through: 30, by: 5) { _ = covered.sample(coverage: 1, at: start + offset) }
+    checkEqual(covered.state, .veiled)
+    checkEqual(covered.apply(.everyWindowOccluded(true), at: start + 31), .unseen)
+    checkEqual(covered.apply(.everyWindowOccluded(false), at: start + 32), .veiled)
 }
 
 private func runAllowedTransitionTests() {
