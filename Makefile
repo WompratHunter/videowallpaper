@@ -38,15 +38,17 @@ build: lint test
 
 # The agent is unloaded first so the app can't set its Poster again; then the original desktop pictures are
 # restored while the Posters they replace still exist. A failed restore is reported but doesn't block removal.
+# Paths are quoted so a home folder with a space can't split into other paths for `rm -rf`.
 uninstall:
-	@launchctl unload $(PLIST_DST) 2>/dev/null || true
-	@if [ -x $(BINARY) ]; then \
-		$(BINARY) --restore-wallpaper || echo "! Could not restore every desktop picture; set it in System Settings"; \
+	@case "$(HOME)" in /?*) ;; *) echo "! HOME is not an absolute path; refusing to uninstall"; exit 1;; esac
+	@launchctl unload "$(PLIST_DST)" 2>/dev/null || true
+	@if [ -x "$(BINARY)" ]; then \
+		"$(BINARY)" --restore-wallpaper || echo "! Could not restore every desktop picture; set it in System Settings"; \
 	else \
 		echo "! App not found, desktop picture not restored; set it in System Settings"; \
 	fi
-	@rm -rf $(APP) $(PLIST_DST) "$(SUPPORT)"
-	@rm -f $(VIDEO_DIR)/.poster.jpg
+	@rm -rf "$(APP)" "$(PLIST_DST)" "$(SUPPORT)"
+	@rm -f "$(VIDEO_DIR)/.poster.jpg"
 	@defaults delete $(BUNDLE_ID) 2>/dev/null || true
 	@echo "✓ Uninstalled: app, LaunchAgent, Application Support and preferences removed"
 	@echo "  (videos in $(VIDEO_DIR)/ and the log in ~/Library/Logs/ left intact)"
