@@ -4,10 +4,11 @@
 
 // Shared
 runLogTests()
-// Player: Recovery, the playback gate and the wake/unlock state line
+// Player: Recovery, the playback gate, the wake/unlock state line and the crossfade
 runRecoveryTests()
 runPlaybackGateTests()
 runPlayerStateReportTests()
+runCrossfadeTests()
 // Library: Wallpaper folder, settle, Poster files
 runWallpaperFolderTests()
 runPosterFilesTests()
