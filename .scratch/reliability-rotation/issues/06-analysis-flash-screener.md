@@ -4,7 +4,7 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-review
+**Status:** done (installed 843fd3f; all 4 videos analysed, eligible=4, lucyna 1.5/s)
 
 - [x] Flash counting is a pure core function: every frame, reduced resolution, 12×12 grid with overlapping 2×2 neighbourhoods plus full frame; flash = opposing relative-luminance changes ≥ 0.10 with darker state < 0.80; max in any 1 s window
 - [x] sRGB→linear via 256-entry lookup table; BT.709 weights
