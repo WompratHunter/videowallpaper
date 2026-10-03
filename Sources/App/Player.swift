@@ -222,7 +222,9 @@ extension Player {
 extension Player {
     /// Applies a deliberate reason to stop or start playing; the gate decides what that means for the player.
     func apply(_ event: PlaybackEvent) {
-        let action = gate.apply(event, isRecoveryResting: backoff.isResting)
+        let decision = gate.apply(event, recovery: recoveryState)
+        applyRecovery(decision.recovery)
+        let action = decision.action
         guard action != .none else { return }
         Log.write("playback", "event=\(event) action=\(action) mode=\(gate.mode) "
             + "video=\(video?.lastPathComponent ?? "none")")
@@ -236,15 +238,26 @@ extension Player {
             monitor.noteResume(at: now)
             if pendingSeek == nil { queuePlayer?.play() }
         case .tearDown:
-            // Any pending Recovery is dropped too: leaving Low Power Mode rebuilds anyway.
             savePosition()
-            pendingRebuild?.cancel()
-            pendingRebuild = nil
-            isRestingWithoutVideo = false
             tearDown()
         case .rebuild:
             runRebuildPlan(verb: "rebuilding", cause: "power")
         }
+    }
+
+    private var recoveryState: RecoveryState {
+        RecoveryState(
+            isRebuildPending: pendingRebuild != nil, isRestingWithoutVideo: isRestingWithoutVideo,
+            isBackoffExhausted: backoff.isResting)
+    }
+
+    /// The gate only ever clears Recovery state; the backoff count is never changed by it.
+    private func applyRecovery(_ next: RecoveryState) {
+        if !next.isRebuildPending {
+            pendingRebuild?.cancel()
+            pendingRebuild = nil
+        }
+        isRestingWithoutVideo = next.isRestingWithoutVideo
     }
 
     /// Not while a resume seek is pending: currentTime() is still 0 and would lose the saved position.

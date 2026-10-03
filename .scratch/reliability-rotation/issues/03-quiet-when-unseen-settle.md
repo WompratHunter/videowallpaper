@@ -22,7 +22,7 @@
   - Tests: `Tests/PlaybackGateTests.swift` (including `RecoveryMonitor` driven from the gate, for each pause reason), `Tests/WallpaperFolderTests.swift` and `Tests/RecoveryTests.swift`.
 - Interpretations:
   - Videos present at launch play at once. The launch snapshot is the baseline for the first check 3 s later, so a copy still running at launch is dropped then, and loaded once it settles.
-  - Entering Low Power Mode cancels a pending Recovery rebuild, and leaving it rebuilds straight away (the backoff count is kept). This clearing of Recovery state is applied in `Player.apply`; the rule is documented on `PlaybackGateAction.tearDown` but is not returned as state from Core.
+  - Entering Low Power Mode cancels a pending Recovery rebuild and a no-video rest, and leaving it rebuilds straight away (the backoff count is kept). `PlaybackGate.apply` takes the current `RecoveryState` and returns a `PlaybackDecision` (action plus next `RecoveryState`); `Player.apply` only applies it.
   - "Unseen" because the session is inactive or locked is left to ticket 07. This ticket covers occlusion and screens asleep only.
 - Log lines: `[occlusion] windows=N all-occluded=yes|no` on window build, and `[occlusion] screen=N visible=yes|no all-occluded=yes|no` on each change. `[power] low-power=on|off`. `[playback] event=… action=pause|resume|tearDown|rebuild mode=…` when the player is affected. `[folder-change] settled videos=N`.
 - Manual checks after `make install`:
