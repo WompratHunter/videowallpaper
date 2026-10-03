@@ -250,7 +250,7 @@ extension AppDelegate {
 extension AppDelegate {
     /// The Current video's saved Poster, so the underlay isn't empty while the player starts.
     private func loadSavedPoster() {
-        guard let video = newestSettledVideo(), let poster = posterURL(for: video), let image = loadImage(poster)
+        guard let video = newestSettledVideo(), let poster = posterURL(for: video), let image = Self.loadImage(poster)
         else { return }
         player.setPoster(image)
     }
@@ -266,19 +266,25 @@ extension AppDelegate {
         }
     }
 
-    private func loadImage(_ url: URL) -> CGImage? {
+    private static func loadImage(_ url: URL) -> CGImage? {
         NSImage(contentsOf: url)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     /// Reuses the video's saved Poster, or exports one, then makes it the desktop picture on every screen.
+    /// Decoding a 4K JPEG takes long enough to stall the main thread, so the saved Poster is read in the background.
     private func showPoster(for video: URL) {
-        guard let poster = posterURL(for: video) else { return }
-        guard let image = loadImage(poster) else {
-            exportPoster(from: video, to: poster)
-            return
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let poster = posterURL(for: video) else { return }
+            guard let image = Self.loadImage(poster) else {
+                DispatchQueue.main.async { [weak self] in self?.exportPoster(from: video, to: poster) }
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.player.video == video else { return }
+                self.player.setPoster(image)
+                DesktopPictures.setPoster(poster)
+            }
         }
-        player.setPoster(image)
-        DesktopPictures.setPoster(poster)
     }
 
     private func exportPoster(from video: URL, to poster: URL) {
