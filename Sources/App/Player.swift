@@ -12,8 +12,7 @@ final class Player {
     var onVideoChange: (URL) -> Void = { _ in }
 
     private(set) var video: URL?
-    private var queuePlayer: AVQueuePlayer?
-    private var looper: AVPlayerLooper?
+    private var current: LoopingPlayer?
     private var observations: [NSKeyValueObservation] = []
     private var failureObserver: NSObjectProtocol?
     private let layers = PlayerLayers()
@@ -33,7 +32,6 @@ final class Player {
         crossfader = PlayerCrossfader(layers: layers)
         crossfader.onCut = { [weak self] url in self?.show(url) }
         crossfader.onPromote = { [weak self] video in self?.adopt(video) }
-        crossfader.onFail = { [weak self] detail in self?.recover(cause: .failed, detail: detail) }
         failureObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -68,9 +66,8 @@ final class Player {
         pendingSeek = seconds > 0 ? seconds : nil
         let built = LoopingPlayer(url: url)
         let player = built.player
-        queuePlayer = player
-        looper = built.looper
-        observe(player, built.looper)
+        current = built
+        observe(built)
         layers.attach(player)
         monitor.noteRebuild(at: now)
         if gate.isIntendingToPlay && pendingSeek == nil { player.play() }
@@ -133,9 +130,8 @@ final class Player {
         let changed = incoming.url != video
         video = incoming.url
         savedSeconds = 0
-        queuePlayer = incoming.player
-        looper = incoming.looper
-        observe(incoming.player, incoming.looper)
+        current = incoming
+        observe(incoming)
         monitor.noteRebuild(at: now)
         if !gate.isIntendingToPlay { incoming.player.pause() }
         if changed { onVideoChange(incoming.url) }
@@ -144,11 +140,8 @@ final class Player {
     private func releasePlayer() {
         observations.forEach { $0.invalidate() }
         observations = []
-        looper?.disableLooping()
-        looper = nil
-        queuePlayer?.pause()
-        queuePlayer?.removeAllItems()
-        queuePlayer = nil
+        current?.release()
+        current = nil
         pendingSeek = nil
     }
 }
@@ -304,6 +297,9 @@ extension Player {
 // MARK: - Observation and state
 
 extension Player {
+    private var queuePlayer: AVQueuePlayer? { current?.player }
+    private var looper: AVPlayerLooper? { current?.looper }
+
     private var playbackSeconds: Double? {
         guard let time = queuePlayer?.currentTime(), time.isNumeric else { return nil }
         return time.seconds
@@ -317,11 +313,11 @@ extension Player {
             looper: looper, timeAdvanced: playbackAdvanced(from: earlier, to: playbackSeconds))
     }
 
-    private func observe(_ player: AVQueuePlayer, _ looper: AVPlayerLooper) {
-        let itemStatus = player.observe(\.currentItem?.status, options: [.initial, .new]) { [weak self] _, _ in
+    private func observe(_ video: LoopingPlayer) {
+        let itemStatus = video.player.observe(\.currentItem?.status, options: [.initial, .new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.itemStatusChanged() }
         }
-        let looperStatus = looper.observe(\.status, options: [.new]) { [weak self] looper, _ in
+        let looperStatus = video.looper.observe(\.status, options: [.new]) { [weak self] looper, _ in
             guard looper.status == .failed else { return }
             DispatchQueue.main.async { self?.reportFailure("looper failed") }
         }

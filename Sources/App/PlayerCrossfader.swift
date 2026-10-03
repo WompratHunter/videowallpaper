@@ -33,8 +33,6 @@ final class PlayerCrossfader {
     var onCut: (URL) -> Void = { _ in }
     /// The incoming player is now on the active layers; the Player adopts it and releases its own.
     var onPromote: (LoopingPlayer) -> Void = { _ in }
-    /// The incoming video failed to load; the Player runs Recovery.
-    var onFail: (String) -> Void = { _ in }
 
     private let layers: PlayerLayers
     private var state = Crossfade()
@@ -78,10 +76,11 @@ final class PlayerCrossfader {
             case .promote(let url):
                 promote(url)
             case .dropIncoming:
-                log("dropped incoming video=\(incoming?.video.url.lastPathComponent ?? "none")")
+                log("dropped incoming video=\(incomingName)")
                 dropIncoming()
-            case .recover:
-                onFail("incoming video failed")
+            case .abandon(let url):
+                log("abandoned video=\(url.lastPathComponent): failed or not ready; keeping the Current video")
+                dropIncoming()
             }
         }
     }
@@ -110,7 +109,7 @@ extension PlayerCrossfader {
     }
 
     private func animate(id: Int, duration: TimeInterval) {
-        log("fading video=\(incoming?.video.url.lastPathComponent ?? "none") over=\(Int(duration))s")
+        log("fading video=\(incomingName) over=\(Int(duration))s")
         layers.fadeInIncoming(duration: duration)
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             guard let self else { return }
@@ -133,10 +132,9 @@ extension PlayerCrossfader {
         onPromote(video)
     }
 
-    private func failed(id: Int) {
-        guard incoming?.id == id else { return }
-        apply(state.incomingFailed(id: id))
-    }
+    private func failed(id: Int) { apply(state.incomingFailed(id: id)) }
+
+    private var incomingName: String { incoming?.video.url.lastPathComponent ?? "none" }
 
     private func dropIncoming() {
         stopObserving()

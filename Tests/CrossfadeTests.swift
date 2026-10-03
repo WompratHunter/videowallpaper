@@ -6,6 +6,8 @@ private let videoA = URL(fileURLWithPath: "/w/a.mp4")
 private let videoB = URL(fileURLWithPath: "/w/b.mp4")
 private let videoC = URL(fileURLWithPath: "/w/c.mp4")
 
+// A fade still in progress is one whose tear-down drops an incoming player; `interrupt() == []` means only one
+// player is left.
 func runCrossfadeTests() {
     runCrossfadeRequestTests()
     runCrossfadeHappyPathTests()
@@ -34,7 +36,7 @@ private func fadingB() -> (Crossfade, Int) {
 private func runCrossfadeRequestTests() {
     var cut = Crossfade()
     checkEqual(cut.request(videoB, duration: 0, current: videoA, isPlaying: true, now: 0), [.cut(videoB)])
-    check(!cut.isActive, "zero duration is a cut, with no fade in progress")
+    checkEqual(cut.interrupt(), [])
 
     // Nobody sees a paused or torn-down player, so a fade would only cost a second decoder.
     var paused = Crossfade()
@@ -48,14 +50,14 @@ private func runCrossfadeRequestTests() {
     guard case .load(_, let url)? = actions.first else { return check(false, "expected a load, got \(actions)") }
     checkEqual(url, videoB)
     checkEqual(actions.count, 1)
-    check(fade.isActive, "a fade is in progress while the incoming video loads")
+    checkEqual(fade.interrupt(), [.dropIncoming])
 }
 
 private func runCrossfadeHappyPathTests() {
     var (fade, id) = loadingB()
     checkEqual(fade.incomingReady(id: id, now: 1), [.animate(id: id, duration: 5)])
     checkEqual(fade.animationFinished(id: id), [.promote(videoB)])
-    check(!fade.isActive, "after promotion only one player is left")
+    checkEqual(fade.interrupt(), [])
     checkEqual(fade.animationFinished(id: id), [])
 
     // A stale readiness or finish from an earlier fade is ignored.
@@ -86,7 +88,7 @@ private func runCrossfadeRetargetTests() {
     // The target reverts to the Current video while loading: drop the incoming, keep playing.
     var (revert, _) = loadingB()
     checkEqual(revert.request(videoA, duration: 5, current: videoA, isPlaying: true, now: 2), [.dropIncoming])
-    check(!revert.isActive, "reverting ends the fade")
+    checkEqual(revert.interrupt(), [])
 
     // A different target mid-fade waits for this fade to finish, then fades on from the new Current video.
     var (queued, id) = fadingB()
@@ -100,7 +102,7 @@ private func runCrossfadeRetargetTests() {
     // A cut requested mid-fade wins at once; the cut itself replaces both players.
     var (cut, _) = fadingB()
     checkEqual(cut.request(videoC, duration: 0, current: videoA, isPlaying: true, now: 2), [.cut(videoC)])
-    check(!cut.isActive, "a cut ends the fade")
+    checkEqual(cut.interrupt(), [])
 }
 
 private func runCrossfadeInterruptionTests() {
@@ -108,10 +110,10 @@ private func runCrossfadeInterruptionTests() {
     // rebuild that follows re-picks the video.
     var (loading, _) = loadingB()
     checkEqual(loading.interrupt(), [.dropIncoming])
-    check(!loading.isActive, "interrupted while loading: idle")
+    checkEqual(loading.interrupt(), [])
     var (fading, _) = fadingB()
     checkEqual(fading.interrupt(), [.dropIncoming])
-    check(!fading.isActive, "interrupted mid-fade: idle")
+    checkEqual(fading.interrupt(), [])
     var idle = Crossfade()
     checkEqual(idle.interrupt(), [])
 
@@ -125,7 +127,7 @@ private func runCrossfadeInterruptionTests() {
     // incoming video becomes Current (and is paused with it).
     var (pausedLoading, _) = loadingB()
     checkEqual(pausedLoading.pause(), [.promote(videoB)])
-    check(!pausedLoading.isActive, "paused while loading: completed")
+    checkEqual(pausedLoading.interrupt(), [])
     var (pausedFading, pausedID) = fadingB()
     checkEqual(pausedFading.pause(), [.promote(videoB)])
     checkEqual(pausedFading.animationFinished(id: pausedID), [])
@@ -140,21 +142,25 @@ private func runCrossfadeInterruptionTests() {
 
 private func runCrossfadeFailureTests() {
     var (failed, id) = loadingB()
-    checkEqual(failed.incomingFailed(id: id), [.dropIncoming, .recover])
-    check(!failed.isActive, "a failed incoming video ends the fade")
+    // The outgoing video is healthy, so it carries on rather than going through Recovery for someone else's file.
+    checkEqual(failed.incomingFailed(id: id), [.abandon(videoB)])
+    checkEqual(failed.interrupt(), [])
     var (staleFail, staleID) = loadingB()
     _ = staleFail.interrupt()
     checkEqual(staleFail.incomingFailed(id: staleID), [])
+    var (failedFading, fadingID) = fadingB()
+    checkEqual(failedFading.incomingFailed(id: fadingID), [.abandon(videoB)])
+    checkEqual(failedFading.animationFinished(id: fadingID), [])
 
-    // Never ready for display: after the timeout, cut to it so normal Recovery can judge the file.
+    // Never ready for display: given up after the timeout, rather than cut to in plain view.
     var (slow, _) = loadingB(at: 100)
     checkEqual(slow.tick(now: 100 + Crossfade.readyTimeout - 1), [])
-    checkEqual(slow.tick(now: 100 + Crossfade.readyTimeout), [.cut(videoB)])
-    check(!slow.isActive, "timed out: idle")
+    checkEqual(slow.tick(now: 100 + Crossfade.readyTimeout), [.abandon(videoB)])
+    checkEqual(slow.interrupt(), [])
 
     // A fade whose finish never arrives is completed by the tick, so two decoders never run on indefinitely.
     var (stuck, _) = fadingB()
     checkEqual(stuck.tick(now: 1 + 5 + Crossfade.readyTimeout - 1), [])
     checkEqual(stuck.tick(now: 1 + 5 + Crossfade.readyTimeout), [.promote(videoB)])
-    check(!stuck.isActive, "overdue fade completed")
+    checkEqual(stuck.interrupt(), [])
 }

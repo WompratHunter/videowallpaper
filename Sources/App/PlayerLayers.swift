@@ -7,6 +7,8 @@ import QuartzCore
 // black. During a crossfade the other slot shows the incoming player above the active one and fades in.
 
 final class PlayerLayers {
+    private static let fadeKey = "crossfade"
+
     /// Called on the main queue once every incoming video layer is ready for display.
     var onIncomingReady: () -> Void = {}
 
@@ -73,12 +75,12 @@ extension PlayerLayers {
         isIncomingVisible = true
         withoutAnimation {
             for layer in slots[incoming].allObjects {
-                let animation = CABasicAnimation(keyPath: "opacity")
+                let animation = CABasicAnimation(keyPath: #keyPath(CALayer.opacity))
                 animation.fromValue = 0
                 animation.toValue = 1
                 animation.duration = duration
                 animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                layer.add(animation, forKey: "crossfade")
+                layer.add(animation, forKey: Self.fadeKey)
                 layer.opacity = 1
             }
         }
@@ -108,13 +110,13 @@ extension PlayerLayers {
     /// Stacking, opacity and players for both slots; the incoming slot sits above the active one.
     private func arrange() {
         for layer in slots[active].allObjects {
-            layer.removeAnimation(forKey: "crossfade")
+            layer.removeAnimation(forKey: Self.fadeKey)
             layer.zPosition = 0
             layer.opacity = 1
             layer.player = player
         }
         for layer in slots[incoming].allObjects {
-            if !isIncomingVisible { layer.removeAnimation(forKey: "crossfade") }
+            if !isIncomingVisible { layer.removeAnimation(forKey: Self.fadeKey) }
             layer.zPosition = 1
             layer.opacity = isIncomingVisible ? 1 : 0
             layer.player = incomingPlayer

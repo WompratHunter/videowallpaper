@@ -4,7 +4,8 @@ import Foundation
 // The state of a switch from the Current video to another. The incoming player loads beside the outgoing one,
 // fades in once it is ready for display, then replaces it, so two decoders only run during a fade. Every way a
 // fade can end (finished, paused, torn down, failed, timed out) is decided here, so the player only applies
-// actions and is never left with an orphaned second player.
+// actions and is never left with an orphaned second player. A failed incoming video never costs the healthy
+// outgoing one, so a switch can't drop the Live wallpaper to the Poster.
 
 enum CrossfadeAction: Equatable {
     /// Replace both players with the target at once (and drop any incoming player).
@@ -17,15 +18,13 @@ enum CrossfadeAction: Equatable {
     case promote(URL)
     /// Release the incoming player; the outgoing one carries on (or is being torn down anyway).
     case dropIncoming
-    /// The incoming video failed: run Recovery, whose rebuild re-picks the video.
-    case recover
+    /// The incoming video failed or never became ready: release it, and the outgoing video carries on unharmed.
+    case abandon(URL)
 }
 
 struct Crossfade {
-    /// Every switch outside the slow Visible-only fallback.
+    /// Every switch outside the slow Visible-only fallback (which Rotation asks for with its own duration).
     static let quickDuration: TimeInterval = 5
-    /// The Visible-only fallback, slow enough to go unnoticed.
-    static let slowDuration: TimeInterval = 20
     /// How long the incoming video may take to become ready for display, and how long a fade may overrun.
     static let readyTimeout: TimeInterval = 15
 
@@ -41,8 +40,6 @@ struct Crossfade {
     /// A different target requested mid-fade; it follows once the running fade finishes.
     private var queued: (target: URL, duration: TimeInterval)?
     private var nextID = 0
-
-    var isActive: Bool { fade != nil }
 
     /// Switch to `target` over `duration` seconds; zero, or a player nobody can see, means a cut.
     mutating func request(
@@ -78,7 +75,7 @@ struct Crossfade {
     mutating func incomingFailed(id: Int) -> [CrossfadeAction] {
         guard let running = fade, running.id == id else { return [] }
         end()
-        return [.dropIncoming, .recover]
+        return [.abandon(running.target)]
     }
 
     /// The player was paused (occluded or screens asleep): nobody sees the fade, so it completes now.
@@ -97,13 +94,13 @@ struct Crossfade {
         return [.dropIncoming]
     }
 
-    /// On the shared tick: a video never ready for display is cut to, and an overdue fade is completed.
+    /// On the shared tick: a video never ready for display is abandoned, and an overdue fade is completed.
     mutating func tick(now: TimeInterval) -> [CrossfadeAction] {
         guard let running = fade else { return [] }
         if !running.isFading {
             guard now - running.since >= Self.readyTimeout else { return [] }
             end()
-            return [.cut(running.target)]
+            return [.abandon(running.target)]
         }
         guard now - running.since >= running.duration + Self.readyTimeout else { return [] }
         return finish(running, now: now)
