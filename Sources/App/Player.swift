@@ -141,7 +141,7 @@ final class Player {
 // MARK: - Recovery
 
 extension Player {
-    var isRecovering: Bool { pendingRebuild != nil || backoff.isResting || isRestingWithoutVideo }
+    private var isRecovering: Bool { pendingRebuild != nil || backoff.isResting || isRestingWithoutVideo }
 
     /// Drops the player at once (the Poster shows), then rebuilds after the backoff delay or rests on the Poster.
     func recover(cause: RecoveryCause, detail: String) {
