@@ -9,6 +9,7 @@ enum AppFiles {
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("VideoWallpaper", isDirectory: true)
     static let posterDirectory = supportDirectory.appendingPathComponent("posters", isDirectory: true)
+    static let analysisCacheFile = supportDirectory.appendingPathComponent("analysis-cache.json")
     static let originalsFile = supportDirectory.appendingPathComponent("original-desktop-pictures.json")
     /// Written into the Wallpaper folder by versions before Posters moved to Application Support.
     static let legacyPoster = wallpaperDirectory.appendingPathComponent(".poster.jpg")

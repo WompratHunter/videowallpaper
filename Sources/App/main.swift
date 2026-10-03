@@ -6,7 +6,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
-    private let library = Library(directory: AppFiles.wallpaperDirectory)
+    private let library = Library(directory: AppFiles.wallpaperDirectory, analysisCache: AppFiles.analysisCacheFile)
     private lazy var windows = WallpaperWindows(player: player)
     private let visibility = Visibility()
     private var tickTimer: Timer?
@@ -18,7 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // next Poster is set.
         DesktopPictures.recordOriginals()
         // Settled videos are known before the first pick and its saved Poster; Low Power Mode is known before any
-        // player is built.
+        // Analysis starts or player is built.
+        library.isPowerSaving = ProcessInfo.processInfo.isLowPowerModeEnabled
         library.start()
         if let video = library.videoToPlay(), let image = library.savedPoster(for: video) { player.setPoster(image) }
         player.apply(.lowPower(ProcessInfo.processInfo.isLowPowerModeEnabled))
@@ -31,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func connectModules() {
         player.videoProvider = { [weak self] in self?.library.videoToPlay() }
+        library.flashOverrides = { UserDefaults.standard.stringArray(forKey: "FlashOverride") ?? [] }
         player.onVideoChange = { [weak self] url in self?.showPoster(for: url) }
         // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), because
         // AVFoundation may otherwise keep playing the old open file.
@@ -120,6 +122,7 @@ extension AppDelegate {
             let isOn = ProcessInfo.processInfo.isLowPowerModeEnabled
             Log.write("power", "low-power=\(isOn ? "on" : "off")")
             self?.player.apply(.lowPower(isOn))
+            self?.library.isPowerSaving = isOn
         }
     }
 

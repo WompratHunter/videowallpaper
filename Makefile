@@ -4,6 +4,7 @@ BUILD_DIR := .build
 APP_SRC   := $(wildcard Sources/App/*.swift)
 CORE_SRC  := $(wildcard Sources/Core/*.swift)
 TEST_SRC  := $(wildcard Tests/*.swift)
+SMOKE_SRC := Sources/App/LibraryAnalyser.swift $(wildcard Tests/Smoke/*.swift)
 PLIST_SRC := com.videowallpaper.plist.template
 PLIST_DST := $(HOME)/Library/LaunchAgents/com.videowallpaper.plist
 LABEL     := com.videowallpaper
@@ -11,7 +12,7 @@ VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 SUPPORT   := $(HOME)/Library/Application Support/VideoWallpaper
 BUNDLE_ID := com.evanscott.videowallpaper
 
-.PHONY: install uninstall build lint test
+.PHONY: install uninstall build lint test smoke
 
 # `install` writes a new inode, so the running binary is never overwritten in place.
 install: build
@@ -31,7 +32,14 @@ test:
 	swiftc $(CORE_SRC) $(TEST_SRC) -o $(BUILD_DIR)/tests
 	$(BUILD_DIR)/tests
 
-build: lint test
+# The real analyser on generated clips with a known flash rate. Pass video paths to measure them instead:
+# `.build/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
+smoke:
+	@mkdir -p $(BUILD_DIR)
+	swiftc -parse-as-library -framework AVFoundation $(CORE_SRC) $(SMOKE_SRC) -o $(BUILD_DIR)/smoke
+	$(BUILD_DIR)/smoke
+
+build: lint test smoke
 	@mkdir -p $(BUILD_DIR)
 	swiftc -O -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
 	@echo "✓ Built $(BUILD_DIR)/videowallpaper"

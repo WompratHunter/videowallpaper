@@ -16,8 +16,8 @@ extension Library {
         Self.posterURL(for: video).flatMap(Self.loadImage)
     }
 
-    /// Reuses the video's saved Poster, or exports and saves one, then calls `use` on the main queue. `use` returns
-    /// false when the video is no longer wanted; a freshly saved Poster that was used prunes the stale ones.
+    /// Reuses the video's saved Poster (normally saved by its Analysis), or exports and saves one, then calls `use` on
+    /// the main queue. `use` returns false when the video is no longer wanted; a used Poster prunes the stale ones.
     /// Decoding a 4K JPEG takes long enough to stall the main thread, so the saved Poster is read in the background.
     func poster(for video: URL, use: @escaping (PosterImage) -> Bool) {
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -26,7 +26,10 @@ extension Library {
                 DispatchQueue.main.async { [weak self] in self?.exportPoster(from: video, to: poster, use: use) }
                 return
             }
-            DispatchQueue.main.async { _ = use(PosterImage(image: image, file: poster)) }
+            DispatchQueue.main.async { [weak self] in
+                guard use(PosterImage(image: image, file: poster)) else { return }
+                self?.pruneStalePosters(current: poster)
+            }
         }
     }
 
@@ -38,7 +41,10 @@ extension Library {
         let gen = AVAssetImageGenerator(asset: AVURLAsset(url: video))
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 3840, height: 2160)
-        gen.generateCGImageAsynchronously(for: CMTime(seconds: 5, preferredTimescale: 600)) { img, _, err in
+        // The frame Analysis chose; the first frame if the video has no Analysis yet.
+        let seconds = Self.videoSnapshot(of: directory)[video.lastPathComponent]
+            .flatMap { analyses.analysis(of: video, file: $0) }?.posterSeconds ?? 0
+        gen.generateCGImageAsynchronously(for: CMTime(seconds: seconds, preferredTimescale: 600)) { img, _, err in
             guard let img, err == nil else { return }
             let isSaved = Self.save(img, to: poster)
             DispatchQueue.main.async { [weak self] in
@@ -48,7 +54,7 @@ extension Library {
         }
     }
 
-    private static func save(_ image: CGImage, to poster: URL) -> Bool {
+    static func save(_ image: CGImage, to poster: URL) -> Bool {
         let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.85])
         do {
             guard let data else { throw CocoaError(.fileWriteUnknown) }
