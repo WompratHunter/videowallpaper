@@ -6,12 +6,14 @@
     <string>com.videowallpaper</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/.local/bin/videowallpaper</string>
+        <string>__HOME__/Applications/VideoWallpaper.app/Contents/MacOS/videowallpaper</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
     <key>StandardOutPath</key>
     <string>__HOME__/Library/Logs/videowallpaper.log</string>
     <key>StandardErrorPath</key>
