@@ -64,7 +64,7 @@ final class WallpaperWindows {
 
 // MARK: - Per-screen wallpaper window
 
-final class WallpaperWindow: NSWindow {
+private final class WallpaperWindow: NSWindow {
     init(screen: NSScreen, player: Player) {
         super.init(
             contentRect: screen.frame,
