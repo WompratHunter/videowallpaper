@@ -80,3 +80,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 
 - Only comment the **why**, not the what — non-obvious constraints, workarounds, subtle invariants
 - `// MARK:` for sections; inline `//` for one-liners; no block comments in production code
+
+## Makefile
+
+- Quote every path in recipes (`"$(APP)"`); destructive recipes (`rm -rf`, `defaults delete`) name explicit app-owned paths only, with no globs, and guard against an empty or relative `HOME`
