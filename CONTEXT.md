@@ -28,7 +28,7 @@ One trip through the Rotation in which no video repeats.
 Awake, unlocked time the Current video has been showing; a switch is only considered once Dwell reaches its minimum.
 
 **Unseen**:
-Nobody can see the Live wallpaper: screens asleep, session locked, or every wallpaper window fully covered by opaque windows.
+Nobody can see the Live wallpaper: screens asleep, session locked, session inactive (e.g. fast user switching), or every wallpaper window fully covered by opaque windows.
 
 **Veiled**:
 The Live wallpaper is technically visible but almost entirely covered, typically by a translucent window.
