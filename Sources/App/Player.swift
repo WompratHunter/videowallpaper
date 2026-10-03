@@ -16,9 +16,7 @@ final class Player {
     private var looper: AVPlayerLooper?
     private var observations: [NSKeyValueObservation] = []
     private var failureObserver: NSObjectProtocol?
-    private let videoLayers = NSHashTable<AVPlayerLayer>.weakObjects()
-    private let posterLayers = NSHashTable<CALayer>.weakObjects()
-    private var poster: CGImage?
+    private let layers = PlayerLayers()
     private var monitor = RecoveryMonitor()
     private var backoff = RecoveryBackoff()
     private var pendingRebuild: DispatchWorkItem?
@@ -37,7 +35,7 @@ final class Player {
             guard let self, let item = note.object as? AVPlayerItem,
                   self.queuePlayer?.items().contains(item) == true
             else { return }
-            let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error).map(describe)
+            let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error).map(describeError)
             self.recover(cause: .failed, detail: "failed-to-play-to-end \(error ?? "")")
         }
     }
@@ -66,7 +64,7 @@ final class Player {
         queuePlayer = player
         looper = newLooper
         observe(player, newLooper)
-        videoLayers.allObjects.forEach { $0.player = player }
+        layers.attach(player)
         monitor.noteRebuild(at: now)
         if gate.isIntendingToPlay && pendingSeek == nil { player.play() }
         if changed { onVideoChange(url) }
@@ -124,7 +122,7 @@ final class Player {
         queuePlayer?.removeAllItems()
         queuePlayer = nil
         pendingSeek = nil
-        videoLayers.allObjects.forEach { $0.player = nil }
+        layers.attach(nil)
     }
 }
 
@@ -270,29 +268,9 @@ extension Player {
 
 extension Player {
     /// A Poster layer with the video layer above it, sized to `frame`; the caller's window only hosts it.
-    func makeLayers(frame: CGRect) -> CALayer {
-        let container = CALayer()
-        container.frame = frame
-        let posterLayer = CALayer()
-        posterLayer.frame = container.bounds
-        posterLayer.contentsGravity = .resizeAspectFill
-        posterLayer.masksToBounds = true
-        posterLayer.contents = poster
-        let videoLayer = AVPlayerLayer()
-        videoLayer.frame = container.bounds
-        videoLayer.videoGravity = .resizeAspectFill
-        videoLayer.player = queuePlayer
-        container.addSublayer(posterLayer)
-        container.addSublayer(videoLayer)
-        posterLayers.add(posterLayer)
-        videoLayers.add(videoLayer)
-        return container
-    }
+    func makeLayers(frame: CGRect) -> CALayer { layers.make(frame: frame) }
 
-    func setPoster(_ image: CGImage) {
-        poster = image
-        posterLayers.allObjects.forEach { $0.contents = image }
-    }
+    func setPoster(_ image: CGImage) { layers.setPoster(image) }
 }
 
 // MARK: - Observation and state
@@ -303,22 +281,12 @@ extension Player {
         return time.seconds
     }
 
-    private var hasFailed: Bool {
-        guard let queuePlayer else { return false }
-        return queuePlayer.status == .failed || queuePlayer.currentItem?.status == .failed
-            || looper?.status == .failed
-    }
+    private var hasFailed: Bool { queuePlayer?.hasFailed(looper: looper) ?? false }
 
     private func stateReport(sinceSeconds earlier: Double?) -> PlayerStateReport {
         guard let queuePlayer else { return .noPlayer }
-        let item = queuePlayer.currentItem
-        return PlayerStateReport(
-            playerStatus: name(of: queuePlayer.status),
-            itemStatus: item.map { name(of: $0.status) } ?? "none",
-            itemError: (item?.error ?? queuePlayer.error ?? looper?.error).map(describe),
-            timeControl: name(of: queuePlayer.timeControlStatus),
-            waitingReason: queuePlayer.reasonForWaitingToPlay?.rawValue,
-            timeAdvanced: playbackAdvanced(from: earlier, to: playbackSeconds))
+        return queuePlayer.stateReport(
+            looper: looper, timeAdvanced: playbackAdvanced(from: earlier, to: playbackSeconds))
     }
 
     private func observe(_ player: AVQueuePlayer, _ looper: AVPlayerLooper) {
@@ -357,38 +325,4 @@ extension Player {
     }
 
     private func format(_ seconds: Double) -> String { String(format: "%.1f", seconds) }
-}
-
-// MARK: - AV state names
-
-private func name(of status: AVPlayer.Status) -> String {
-    switch status {
-    case .unknown: return "unknown"
-    case .readyToPlay: return "readyToPlay"
-    case .failed: return "failed"
-    @unknown default: return "rawValue\(status.rawValue)"
-    }
-}
-
-private func name(of status: AVPlayerItem.Status) -> String {
-    switch status {
-    case .unknown: return "unknown"
-    case .readyToPlay: return "readyToPlay"
-    case .failed: return "failed"
-    @unknown default: return "rawValue\(status.rawValue)"
-    }
-}
-
-private func name(of status: AVPlayer.TimeControlStatus) -> String {
-    switch status {
-    case .paused: return "paused"
-    case .waitingToPlayAtSpecifiedRate: return "waitingToPlayAtSpecifiedRate"
-    case .playing: return "playing"
-    @unknown default: return "rawValue\(status.rawValue)"
-    }
-}
-
-private func describe(_ error: Error) -> String {
-    let nsError = error as NSError
-    return "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
 }
