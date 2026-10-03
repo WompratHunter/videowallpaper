@@ -3,7 +3,7 @@ import AppKit
 // MARK: - Visibility
 // Whether the Live wallpaper can be seen: Unseen, Veiled or Visible (see CONTEXT.md). Unseen follows notifications
 // with no polling. Veiled needs the window list, which is read only when a caller asks (`checkVeil`, on each tick
-// while a switch is due), so an idle desktop never pays for it. Only window bounds and layers are read, which
+// while a switch is due), so an idle desktop never pays for it. Only window bounds, layer and alpha are read, which
 // needs no Screen Recording permission.
 
 final class Visibility {
