@@ -6,7 +6,7 @@ PLIST_DST := $(HOME)/Library/LaunchAgents/com.videowallpaper.plist
 LABEL     := com.videowallpaper
 VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 
-.PHONY: install uninstall build
+.PHONY: install uninstall build lint
 
 install: build
 	@mkdir -p $(VIDEO_DIR) $(HOME)/Library/Logs
@@ -16,7 +16,10 @@ install: build
 	@launchctl load $(PLIST_DST)
 	@echo "✓ Installed. Drop .mp4 files into $(VIDEO_DIR)/"
 
-build:
+lint:
+	swiftlint lint
+
+build: lint
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	swiftc -O -framework AppKit -framework AVFoundation $(SRC) -o $(BINARY)
 	@echo "✓ Built $(BINARY)"

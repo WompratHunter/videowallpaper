@@ -1,0 +1,94 @@
+included:
+  - VideoWallpaper.swift
+
+# ── Rules ──────────────────────────────────────────────────────────────────────
+
+disabled_rules:
+  - todo                     # MARK: TODO is fine during active dev
+
+analyzer_rules:
+  - explicit_self
+
+opt_in_rules:
+  # Naming / clarity
+  - redundant_type_annotation
+  - prefer_self_type_over_type_of_self
+  - contains_over_first_not_nil
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - empty_collection_literal
+  - first_where
+  - last_where
+  - reduce_into
+  - sorted_first_last
+  # Access control
+  - private_action
+  - private_outlet
+  # Safety
+  - unowned_variable_capture
+  - strong_iboutlet
+  # Style
+  - closure_end_indentation
+  - closure_spacing
+  - collection_alignment
+  - operator_usage_whitespace
+  - multiline_parameters
+  - trailing_closure
+  - yoda_condition
+
+# ── Configuration ──────────────────────────────────────────────────────────────
+
+line_length:
+  warning: 120
+  error: 160
+  ignores_comments: true
+  ignores_urls: true
+
+type_body_length:
+  warning: 150
+  error: 200
+
+function_body_length:
+  warning: 40
+  error: 60
+
+file_length:
+  warning: 400
+  error: 600
+
+identifier_name:
+  min_length:
+    warning: 2
+  excluded:
+    - id
+    - q       # AVQueuePlayer local
+    - fd      # file descriptor
+    - fm      # FileManager
+    - a
+    - b       # comparison temporaries in max{}
+    - n       # unused Notification parameter convention
+
+type_name:
+  min_length: 3
+
+nesting:
+  type_level: 2
+
+cyclomatic_complexity:
+  warning: 10
+  error: 20
+
+# ── Custom rules ───────────────────────────────────────────────────────────────
+
+custom_rules:
+  no_hardcoded_window_level:
+    name: "No hardcoded window level"
+    regex: 'NSWindow\.Level\(rawValue:\s*\d+\)'
+    message: "Use CGWindowLevelForKey(_:) instead of a raw integer window level."
+    severity: warning
+
+  no_print_in_production:
+    name: "No print statements"
+    regex: '^\s*print\('
+    message: "Remove debug print() calls before committing."
+    severity: warning

@@ -12,8 +12,10 @@ func newestVideo(in dir: URL) -> URL? {
     return items
         .filter { ["mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }
         .max {
-            let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? .distantPast
+            let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? .distantPast
             return a < b
         }
 }
@@ -160,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Notifications
 
     @objc private func screensSleep() { windows.forEach { $0.pause() } }
-    @objc private func screensWake()  { windows.forEach { $0.reassert() } }
+    @objc private func screensWake() { windows.forEach { $0.reassert() } }
     @objc private func screensChanged() { buildWindows() }
 }
 
