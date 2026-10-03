@@ -1,0 +1,7 @@
+# compiled output
+*.o
+*.d
+videowallpaper
+
+# macOS
+.DS_Store
