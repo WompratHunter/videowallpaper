@@ -25,6 +25,9 @@ final class Player {
     private var pendingSeek: Double?
     private var savedSeconds: Double = 0
     private var isIntendingToPlay = true
+    private var isRestingWithoutVideo = false
+    /// Short fixed wait after a folder change, so a burst of file events leads to one rebuild.
+    private static let folderDebounce: TimeInterval = 2
 
     private var shouldBePlaying: Bool { isIntendingToPlay && video != nil }
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
@@ -51,6 +54,7 @@ final class Player {
     func show(_ url: URL, at seconds: Double = 0) {
         pendingRebuild?.cancel()
         pendingRebuild = nil
+        isRestingWithoutVideo = false
         tearDown()
         let changed = url != video
         video = url
@@ -92,7 +96,7 @@ final class Player {
 
     /// Runs on the app's shared 5 s tick: compares playback time with the previous tick.
     func healthTick() {
-        guard pendingRebuild == nil, !backoff.isResting else { return }
+        guard !isRecovering else { return }
         let seconds = playbackSeconds
         let sample = HealthSample(
             now: now, playbackSeconds: seconds, isIntendingToPlay: shouldBePlaying, hasFailed: hasFailed)
@@ -121,36 +125,6 @@ final class Player {
         }
     }
 
-    // MARK: - Recovery
-
-    /// Drops the player at once (the Poster shows), then rebuilds after the backoff delay or rests on the Poster.
-    func recover(cause: RecoveryCause, detail: String) {
-        guard pendingRebuild == nil, !backoff.isResting else { return }
-        let name = video?.lastPathComponent ?? "none"
-        tearDown()
-        guard let delay = backoff.nextDelay() else {
-            Log.write("recovery", "cause=\(cause.rawValue) video=\(name) resting on Poster after "
-                + "\(RecoveryBackoff.delays.count) attempts \(detail)")
-            return
-        }
-        Log.write("recovery", "cause=\(cause.rawValue) video=\(name) position=\(format(savedSeconds)) "
-            + "rebuild-in=\(Int(delay))s \(detail)")
-        let work = DispatchWorkItem { [weak self] in self?.rebuild() }
-        pendingRebuild = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
-
-    private func rebuild() {
-        pendingRebuild = nil
-        guard let target = videoProvider() ?? video else {
-            Log.write("recovery", "no video to rebuild; staying on Poster")
-            return
-        }
-        let resumeAt = resumePosition(rebuilding: target, current: video, saved: savedSeconds)
-        Log.write("recovery", "rebuilding video=\(target.lastPathComponent) at=\(format(resumeAt))")
-        show(target, at: resumeAt)
-    }
-
     private func tearDown() {
         observations.forEach { $0.invalidate() }
         observations = []
@@ -161,6 +135,82 @@ final class Player {
         queuePlayer = nil
         pendingSeek = nil
         videoLayers.allObjects.forEach { $0.player = nil }
+    }
+}
+
+// MARK: - Recovery
+
+extension Player {
+    var isRecovering: Bool { pendingRebuild != nil || backoff.isResting || isRestingWithoutVideo }
+
+    /// Drops the player at once (the Poster shows), then rebuilds after the backoff delay or rests on the Poster.
+    func recover(cause: RecoveryCause, detail: String) {
+        guard !isRecovering else { return }
+        let name = video?.lastPathComponent ?? "none"
+        tearDown()
+        guard let delay = backoff.nextDelay() else {
+            Log.write("recovery", "cause=\(cause.rawValue) video=\(name) resting on Poster after "
+                + "\(RecoveryBackoff.delays.count) attempts \(detail)")
+            return
+        }
+        logRecovery(cause, rebuildIn: delay, detail: detail)
+        scheduleRebuild(after: delay)
+    }
+
+    /// The folder's set of videos changed: resets the backoff, and rebuilds promptly if a video became available
+    /// while recovering, rather than waiting out the backoff timer.
+    func folderChanged(newest: URL?) {
+        backoff.reset(on: .folderChange)
+        let currentExists = video.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let action = folderChangeAction(
+            newest: newest, current: video, currentExists: currentExists, isRecovering: isRecovering)
+        switch action {
+        case .keepPlaying:
+            break
+        case .switchTo(let url):
+            show(url)
+        case .rebuildSoon(let cause):
+            tearDown()
+            isRestingWithoutVideo = false
+            logRecovery(cause, rebuildIn: Self.folderDebounce, detail: "on folder-change")
+            scheduleRebuild(after: Self.folderDebounce)
+        case .restNoVideo:
+            restWithoutVideo(detail: "on folder-change")
+        }
+    }
+
+    private func logRecovery(_ cause: RecoveryCause, rebuildIn delay: TimeInterval, detail: String) {
+        Log.write("recovery", "cause=\(cause.rawValue) video=\(video?.lastPathComponent ?? "none") "
+            + "position=\(format(savedSeconds)) rebuild-in=\(Int(delay))s \(detail)")
+    }
+
+    private func scheduleRebuild(after delay: TimeInterval) {
+        pendingRebuild?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.rebuild() }
+        pendingRebuild = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func rebuild() {
+        pendingRebuild = nil
+        switch rebuildPlan(newest: videoProvider(), current: video, saved: savedSeconds) {
+        case let .play(target, resumeAt):
+            Log.write("recovery", "rebuilding video=\(target.lastPathComponent) at=\(format(resumeAt))")
+            show(target, at: resumeAt)
+        case .restNoVideo:
+            restWithoutVideo(detail: "at rebuild")
+        }
+    }
+
+    /// No eligible video: rest on the Poster until the folder changes. Not a failure, so the backoff is untouched.
+    private func restWithoutVideo(detail: String) {
+        pendingRebuild?.cancel()
+        pendingRebuild = nil
+        tearDown()
+        guard !isRestingWithoutVideo else { return }
+        isRestingWithoutVideo = true
+        Log.write("recovery", "cause=no-video video=\(video?.lastPathComponent ?? "none") "
+            + "resting on Poster until a video is added \(detail)")
     }
 }
 

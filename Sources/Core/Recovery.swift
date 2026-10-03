@@ -10,11 +10,20 @@ enum RecoveryCause: String {
     case notPlayingOnWake = "not-playing-on-wake"
     case fileMissing = "file-missing"
     case retryAfterRest = "retry-after-rest"
+    case videoAvailable = "video-available"
 }
 
-/// Where a rebuilt player starts: the saved position for the same video, the beginning for a replacement.
-func resumePosition(rebuilding target: URL, current: URL?, saved: Double) -> Double {
-    target == current ? saved : 0
+enum RebuildPlan: Equatable {
+    case play(URL, at: Double)
+    /// No eligible video in the folder: rest on the Poster. Not a failure, so the backoff does not advance.
+    case restNoVideo
+}
+
+/// What a rebuild does, given the newest eligible video re-picked from the folder at rebuild time.
+/// The same video resumes at the saved position; a replacement starts from the beginning.
+func rebuildPlan(newest: URL?, current: URL?, saved: Double) -> RebuildPlan {
+    guard let newest else { return .restNoVideo }
+    return .play(newest, at: newest == current ? saved : 0)
 }
 
 struct HealthSample {

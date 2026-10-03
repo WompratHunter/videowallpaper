@@ -107,13 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadVideo() {
-        // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), which then
-        // picks the newest remaining video; AVFoundation may otherwise keep playing the old open file.
-        if let current = player.video, !FileManager.default.fileExists(atPath: current.path) {
-            player.recover(cause: .fileMissing, detail: "on folder-change")
-            return
-        }
-        guard let url = newestVideo(in: wallpaperDir), url != player.video else { return }
+        guard let url = newestVideo(in: wallpaperDir) else { return }
         player.show(url)
     }
 
@@ -146,8 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let listing = currentVideoListing()
         guard listing != videoFiles else { return }
         videoFiles = listing
-        player.resetBackoff(on: .folderChange)
-        loadVideo()
+        // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), because
+        // AVFoundation may otherwise keep playing the old open file.
+        player.folderChanged(newest: newestVideo(in: wallpaperDir))
     }
 
     private func currentVideoListing() -> [String: Date] {

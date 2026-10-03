@@ -121,10 +121,12 @@ private func runResumeGraceTests() {
 private func runResumePositionTests() {
     let rain = URL(fileURLWithPath: "/v/rain.mp4")
     let sea = URL(fileURLWithPath: "/v/sea.mp4")
-    // Rebuilding the same video resumes where it stopped; a replacement video starts from the beginning.
-    checkEqual(resumePosition(rebuilding: rain, current: rain, saved: 42.5), 42.5)
-    checkEqual(resumePosition(rebuilding: sea, current: rain, saved: 42.5), 0)
-    checkEqual(resumePosition(rebuilding: sea, current: nil, saved: 42.5), 0)
+    // A rebuild re-picks from the folder: the same video resumes where it stopped, a replacement starts at 0.
+    checkEqual(rebuildPlan(newest: rain, current: rain, saved: 42.5), .play(rain, at: 42.5))
+    checkEqual(rebuildPlan(newest: sea, current: rain, saved: 42.5), .play(sea, at: 0))
+    checkEqual(rebuildPlan(newest: sea, current: nil, saved: 42.5), .play(sea, at: 0))
+    // No eligible video left: rest on the Poster rather than retrying the stale file.
+    checkEqual(rebuildPlan(newest: nil, current: rain, saved: 42.5), .restNoVideo)
 }
 
 private func runBackoffTests() {
