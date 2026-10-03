@@ -293,7 +293,7 @@ extension AppDelegate {
                 self.player.setPoster(img)
                 guard isSaved else { return }
                 DesktopPictures.setPoster(poster)
-                self.pruneStalePosters()
+                self.pruneStalePosters(current: poster)
             }
         }
     }
@@ -312,13 +312,13 @@ extension AppDelegate {
     }
 
     /// Posters of videos no longer in the folder are deleted, so Application Support doesn't grow forever.
-    private func pruneStalePosters() {
+    private func pruneStalePosters(current: URL) {
         // Named by posterURL(for:), like the Poster just saved, so a fresh Poster is never pruned.
         let keep = Set(videoSnapshot(of: wallpaperDir).keys.compactMap {
             posterURL(for: wallpaperDir.appendingPathComponent($0))?.lastPathComponent
         })
         let names = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
-        for name in stalePosters(in: names, keeping: keep) {
+        for name in stalePosters(in: names, keeping: keep, current: current.lastPathComponent) {
             try? FileManager.default.removeItem(at: AppFiles.posterDirectory.appendingPathComponent(name))
         }
     }

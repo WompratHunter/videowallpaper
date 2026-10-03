@@ -26,8 +26,10 @@ func isPosterFileName(_ name: String) -> Bool {
 }
 
 /// Posters in the folder that belong to no current video, so app data doesn't grow with every video ever played.
-func stalePosters(in names: [String], keeping keep: Set<String>) -> [String] {
-    names.filter { isPosterFileName($0) && !keep.contains($0) }.sorted()
+/// The Current video's Poster is always kept: it is the desktop picture, and an unreadable Wallpaper folder lists no
+/// videos at all.
+func stalePosters(in names: [String], keeping keep: Set<String>, current: String) -> [String] {
+    names.filter { isPosterFileName($0) && !keep.contains($0) && $0 != current }.sorted()
 }
 
 // MARK: - Desktop pictures

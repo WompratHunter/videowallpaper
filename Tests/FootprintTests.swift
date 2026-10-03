@@ -46,9 +46,13 @@ private func runPosterNameTests() {
 private func runStalePosterTests() {
     let keep = "poster-0000000000000001.jpg"
     let gone = "poster-0000000000000002.jpg"
-    checkEqual(stalePosters(in: [keep, gone, ".DS_Store", "readme.txt"], keeping: [keep]), [gone])
-    checkEqual(stalePosters(in: [keep], keeping: [keep]), [])
-    checkEqual(stalePosters(in: [], keeping: [keep]), [])
+    let current = "poster-0000000000000003.jpg"
+    checkEqual(
+        stalePosters(in: [keep, gone, current, ".DS_Store", "readme.txt"], keeping: [keep], current: current), [gone])
+    checkEqual(stalePosters(in: [keep], keeping: [keep], current: current), [])
+    checkEqual(stalePosters(in: [], keeping: [keep], current: current), [])
+    // An unreadable Wallpaper folder lists no videos; the Current Poster (the desktop picture) must still survive.
+    checkEqual(stalePosters(in: [gone, current], keeping: [], current: current), [gone])
 }
 
 private func runOwnPictureTests() {
