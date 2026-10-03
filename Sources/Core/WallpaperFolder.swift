@@ -26,6 +26,9 @@ func newestVideo(in listing: [String: Date]) -> String? {
 struct VideoFile: Equatable {
     let size: Int64
     let modified: Date
+
+    /// Whole milliseconds, so a date read back from disk or JSON compares equal to the original.
+    var modifiedMilliseconds: Int64 { Int64((modified.timeIntervalSince1970 * 1000).rounded()) }
 }
 
 /// Videos whose non-zero size is the same in both snapshots, with their latest modification date.

@@ -14,7 +14,7 @@ private func runPosterNameTests() {
     check(isPosterFileName(name), "a generated name is recognised as a Poster: \(name)")
     check(name.hasSuffix(".jpg") && !name.hasPrefix("."), "Poster names are visible JPEGs: \(name)")
     // Golden value: the name must not change between runs (Swift's Hasher is seeded per process).
-    checkEqual(name, "poster-1b423921114e5bb3.jpg")
+    checkEqual(name, "poster-2a375343f308636b.jpg")
     check(name != posterFileName(forVideoAt: "/v/sea.mp4", file: file), "another path gets another Poster")
     check(
         name != posterFileName(forVideoAt: "/v/rain.mp4", file: VideoFile(size: 1_001, modified: file.modified)),

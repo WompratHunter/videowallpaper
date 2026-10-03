@@ -7,13 +7,15 @@ import Foundation
 
 private let posterPrefix = "poster-"
 private let posterExtension = ".jpg"
+private let posterFrameChoice = "mean-luminance"
 
 /// The Poster's file name for a video. FNV-1a, not `Hasher`, because `Hasher` is seeded per process and the
-/// name must be the same on every launch.
+/// name must be the same on every launch. The frame choice is part of the name: Posters exported at 5 s before
+/// Analysis chose a representative frame get new names, so macOS shows the new frame instead of its cached image.
 func posterFileName(forVideoAt path: String, file: VideoFile) -> String {
-    let milliseconds = Int64((file.modified.timeIntervalSince1970 * 1000).rounded())
     var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-    for byte in "\(path)\u{0}\(file.size)\u{0}\(milliseconds)".utf8 {
+    let key = "\(path)\u{0}\(file.size)\u{0}\(file.modifiedMilliseconds)\u{0}\(posterFrameChoice)"
+    for byte in key.utf8 {
         hash ^= UInt64(byte)
         hash = hash &* 0x0000_0100_0000_01b3
     }

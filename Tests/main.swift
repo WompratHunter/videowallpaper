@@ -9,10 +9,11 @@ runRecoveryTests()
 runPlaybackGateTests()
 runPlayerStateReportTests()
 runCrossfadeTests()
-// Library: Wallpaper folder, settle, Poster files
+// Library: Wallpaper folder, settle, Poster files, flash screening, Analysis cache
 runWallpaperFolderTests()
 runPosterFilesTests()
 runFlashTests()
+runAnalysisCacheTests()
 // Visibility
 runVisibilityClassificationTests()
 // Rotation
