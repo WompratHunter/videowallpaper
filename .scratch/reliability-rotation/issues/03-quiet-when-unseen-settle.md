@@ -4,14 +4,14 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done (manual checks pending user)
 
 - [x] Low Power Mode on → Poster only, no player; off → player rebuilt; logged
 - [x] Pause when all wallpaper windows are occluded, resume when any is visible; occlusion changes logged (so lock-screen and Ghostty behaviour can be verified)
 - [x] Recovery's "intends to play" excludes Low Power Mode, occluded-pause and screens asleep (covered by tests)
 - [x] Settle check is a pure core function with tests; folder events are debounced and only settled files load
 - [ ] Manual check: Ghostty maximized in front keeps the video playing; an opaque full-screen app pauses it (CPU drops in `top`)
-- [ ] `make build` green; `make install` (build green with 179 checks; install left to the orchestrator)
+- [x] `make build` green; `make install` (189 checks; installed 0be4b7e)
 
 ## Comments
 
@@ -32,3 +32,5 @@
   - Lock screen: lock and watch the `occlusion` and `screens-sleep` lines, then unlock and check there is no spurious Recovery.
   - Low Power Mode (System Settings → Battery): turning it on logs `low-power=on` and `action=tearDown`, the Poster shows and CPU is about 0. Turning it off logs `action=rebuild` and `rebuilding video=… at=<saved position>`.
   - Copy a large video into the folder slowly (e.g. from a network share). Nothing should load until about 3 s after the copy ends. Then `settled videos=N` is logged and the new video plays.
+
+- Orchestrator (post-merge): installed while the displays had been asleep since 13:31. Launch logged `all-occluded=yes` and paused (0.2% CPU), which is correct. While asleep, CGWindowList reports the wallpaper windows at 98% of screen size (centred), apparently a system transform while asleep; re-check after wake. Pending with the user: Ghostty/full-screen/Low Power Mode, and resume when the display wakes.
