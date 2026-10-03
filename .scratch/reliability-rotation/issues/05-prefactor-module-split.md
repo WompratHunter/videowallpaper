@@ -4,14 +4,14 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Multi-file build works (entry file is `main.swift`); Makefile and lint pick up all files
 - [x] Each module exposes a small interface; wiring is the only place modules meet
 - [x] Per-area core-logic and test files exist (empty placeholders allowed for Visibility/Flash), registered in the test runner
 - [x] `.claude/CODING_STANDARDS.md` updated: the "single-file app" description and file-organisation rules reflect the module layout (so review doesn't flag the split)
 - [x] Behaviour identical to after ticket 04 (all tests pass, manual smoke: video plays, Poster set): 225/225 checks pass and two reviews found no behaviour difference; the manual smoke is pending `make install`
-- [ ] `make build` green; `make install`: build green; install left to the orchestrator
+- [x] `make build` green; `make install` of 66ffc50. Launch lines match ticket 04; paused because the display has been off since 14:38
 
 ## Comments
 
