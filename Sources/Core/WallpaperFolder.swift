@@ -48,10 +48,13 @@ struct FolderSettler {
     /// The snapshot the next scheduled check compares against; nil when no check is pending.
     private var baseline: [String: VideoFile]?
 
-    /// Videos present at launch play at once rather than after a settle delay; the launch snapshot is also the
-    /// baseline of a first check, so a file still being copied at launch is dropped when that check finds it grew.
-    init(trusting snapshot: [String: VideoFile]) {
-        ready = snapshot.mapValues(\.modified)
+    /// At launch there is no earlier snapshot, so an unchanged modification date stands in for it: a non-empty
+    /// video untouched for `checkInterval` is settled and plays at once, while one written more recently waits for
+    /// the first check. The launch snapshot is that check's baseline, so a copy that kept the source's date and
+    /// is still growing is dropped then too.
+    init(launch snapshot: [String: VideoFile], now: Date) {
+        let cutoff = now.addingTimeInterval(-Self.checkInterval)
+        ready = snapshot.filter { _, file in file.size > 0 && file.modified <= cutoff }.mapValues(\.modified)
         baseline = snapshot
     }
 

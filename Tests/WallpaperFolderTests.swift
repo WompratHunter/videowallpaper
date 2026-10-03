@@ -76,9 +76,29 @@ private func outcome(changed: Bool, again: Bool) -> SettleOutcome {
     SettleOutcome(isReadyChanged: changed, needsAnotherCheck: again)
 }
 
+private let launchTime = Date(timeIntervalSince1970: 1000)
+
+private func runLaunchSettleTests() {
+    // Untouched for the check interval: settled at launch, so a normal launch plays without waiting. Written in
+    // the last 3 s (still being copied) or empty: not loaded until the first check finds it stable.
+    let snapshot = [
+        "rain.mp4": file(500, 900), "edge.mp4": file(500, 997), "copying.mp4": file(100, 999),
+        "empty.mp4": file(0, 900)
+    ]
+    var settler = FolderSettler(launch: snapshot, now: launchTime)
+    checkEqual(Set(settler.ready.keys), ["edge.mp4", "rain.mp4"])
+    check(!settler.noteEvent(snapshot), "the launch check is already pending")
+    // Finished copying by the first check: loaded then.
+    let later = ["rain.mp4": file(500, 900), "edge.mp4": file(500, 997), "copying.mp4": file(100, 999)]
+    checkEqual(settler.check(later), outcome(changed: true, again: false))
+    checkEqual(Set(settler.ready.keys), ["copying.mp4", "edge.mp4", "rain.mp4"])
+}
+
 private func runFolderSettlerTests() {
-    // Videos present at launch play at once; the launch snapshot is the first check's baseline.
-    var settler = FolderSettler(trusting: ["rain.mp4": file(500), "half.mp4": file(100)])
+    runLaunchSettleTests()
+
+    // A copy that kept its source's date is trusted at launch, but the first check drops it if it grew.
+    var settler = FolderSettler(launch: ["rain.mp4": file(500), "half.mp4": file(100)], now: launchTime)
     checkEqual(Set(settler.ready.keys), ["half.mp4", "rain.mp4"])
     check(!settler.noteEvent(["rain.mp4": file(500)]), "the launch check is already pending")
     // A copy that was still running at launch is dropped by that first check.

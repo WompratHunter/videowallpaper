@@ -21,7 +21,7 @@
   - `RecoveryBackoff.reset(on:isPowerSaving:)` decides whether a rest ends with a retry. It does not retry in Low Power Mode.
   - Tests: `Tests/PlaybackGateTests.swift` (including `RecoveryMonitor` driven from the gate, for each pause reason), `Tests/WallpaperFolderTests.swift` and `Tests/RecoveryTests.swift`.
 - Interpretations:
-  - Videos present at launch play at once. The launch snapshot is the baseline for the first check 3 s later, so a copy still running at launch is dropped then, and loaded once it settles.
+  - Launch goes through the settle check too, without a delay for a normal launch: with no earlier snapshot, a non-empty video whose modification date is at least 3 s old counts as settled and plays at once (`FolderSettler(launch:now:)`). A file written in the last 3 s (a copy in progress) is not loaded until the first check finds it stable. The launch snapshot is that check's baseline, so a copy that kept its source's date and is still growing is dropped then as before.
   - Entering Low Power Mode cancels a pending Recovery rebuild and a no-video rest, and leaving it rebuilds straight away (the backoff count is kept). `PlaybackGate.apply` takes the current `RecoveryState` and returns a `PlaybackDecision` (action plus next `RecoveryState`); `Player.apply` only applies it.
   - "Unseen" because the session is inactive or locked is left to ticket 07. This ticket covers occlusion and screens asleep only.
 - Log lines: `[occlusion] windows=N all-occluded=yes|no` on window build, and `[occlusion] screen=N visible=yes|no all-occluded=yes|no` on each change. `[power] low-power=on|off`. `[playback] event=… action=pause|resume|tearDown|rebuild mode=…` when the player is affected. `[folder-change] settled videos=N`.

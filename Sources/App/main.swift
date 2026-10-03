@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
     private var windows: [WallpaperWindow] = []
     private var folderWatch: DispatchSourceFileSystemObject?
-    private var settler = FolderSettler(trusting: [:])
+    private var settler = FolderSettler(launch: [:], now: Date())
     private var tickTimer: Timer?
     private let wallpaperDir = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
 
@@ -214,9 +214,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate {
     private func startFolderWatch() {
         try? FileManager.default.createDirectory(at: wallpaperDir, withIntermediateDirectories: true)
-        // Seeded before the watch so videos still play if it can't be opened; the launch snapshot is the first
-        // check's baseline, which catches a copy still running at launch.
-        settler = FolderSettler(trusting: videoSnapshot(of: wallpaperDir))
+        // Seeded before the watch so videos still play if it can't be opened; a copy still running at launch
+        // waits for the first check like any other.
+        settler = FolderSettler(launch: videoSnapshot(of: wallpaperDir), now: Date())
         scheduleSettleCheck()
         let fd = open(wallpaperDir.path, O_EVTONLY)
         guard fd >= 0 else {
