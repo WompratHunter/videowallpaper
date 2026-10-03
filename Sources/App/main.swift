@@ -169,11 +169,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Samples each player now and again a moment later, so the line records whether time actually advanced
     /// rather than trusting timeControlStatus, which can claim "playing" for a dead player.
     private func logPlayerState(cause: String) {
-        let samples = windows.map { ($0, $0.playbackSeconds) }
+        let samples = windows.map { (window: $0, earlierSeconds: $0.playbackSeconds) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             let video = self?.currentVideo?.lastPathComponent ?? "none"
             for (index, sample) in samples.enumerated() {
-                let report = sample.0.stateReport(sinceSeconds: sample.1)
+                let report = sample.window.stateReport(sinceSeconds: sample.earlierSeconds)
                 Log.write(cause, "screen=\(index) video=\(video) \(report)")
             }
             if samples.isEmpty { Log.write(cause, "screens=0 video=\(video) \(PlayerStateReport.noPlayer)") }

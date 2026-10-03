@@ -2,4 +2,5 @@
 // Each area's suite is registered here; the runner exits non-zero if any check failed.
 
 runLogTests()
+runPlayerStateReportTests()
 finishTests()
