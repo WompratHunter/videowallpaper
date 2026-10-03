@@ -8,6 +8,8 @@ PLIST_SRC := com.videowallpaper.plist.template
 PLIST_DST := $(HOME)/Library/LaunchAgents/com.videowallpaper.plist
 LABEL     := com.videowallpaper
 VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
+SUPPORT   := $(HOME)/Library/Application Support/VideoWallpaper
+BUNDLE_ID := com.evanscott.videowallpaper
 
 .PHONY: install uninstall build lint test
 
@@ -34,7 +36,15 @@ build: lint test
 	swiftc -O -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
 	@echo "✓ Built $(BUILD_DIR)/videowallpaper"
 
+# The agent is unloaded first so the app can't set its Poster again; then the original desktop pictures are
+# restored while the Posters they replace still exist. A failed restore is reported but doesn't block removal.
 uninstall:
 	@launchctl unload $(PLIST_DST) 2>/dev/null || true
-	@rm -rf $(APP) $(PLIST_DST)
-	@echo "✓ Uninstalled (video folder left intact)"
+	@if [ -x $(BINARY) ]; then \
+		$(BINARY) --restore-wallpaper || echo "! Could not restore every desktop picture; set it in System Settings"; \
+	fi
+	@rm -rf $(APP) $(PLIST_DST) "$(SUPPORT)"
+	@rm -f $(VIDEO_DIR)/.poster.jpg
+	@defaults delete $(BUNDLE_ID) 2>/dev/null || true
+	@echo "✓ Uninstalled: app, LaunchAgent, Application Support and preferences removed"
+	@echo "  (videos in $(VIDEO_DIR)/ and the log in ~/Library/Logs/ left intact)"
