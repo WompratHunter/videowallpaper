@@ -160,10 +160,12 @@ extension Player {
     /// The folder's set of videos changed: resets the backoff, and rebuilds promptly if a video became available
     /// while recovering, rather than waiting out the backoff timer.
     func folderChanged(newest: URL?) {
+        // Read before the reset: a rest after an exhausted backoff is still Recovery and must be retried now.
+        let wasRecovering = isRecovering
         backoff.reset(on: .folderChange)
         let currentExists = video.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let action = folderChangeAction(
-            newest: newest, current: video, currentExists: currentExists, isRecovering: isRecovering)
+            newest: newest, current: video, currentExists: currentExists, isRecovering: wasRecovering)
         switch action {
         case .keepPlaying:
             break
