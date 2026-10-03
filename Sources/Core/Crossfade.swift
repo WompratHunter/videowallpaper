@@ -53,7 +53,8 @@ struct Crossfade {
             return target == current ? [] : [load(target, duration: duration, now: now)]
         }
         if running.isFading {
-            if target != running.target { queued = (target, duration) }
+            // The last request wins: asking for the fading target again cancels anything queued behind it.
+            queued = target == running.target ? nil : (target, duration)
             return []
         }
         if target == running.target { return [] }

@@ -99,6 +99,12 @@ private func runCrossfadeRetargetTests() {
     }
     checkEqual(next, videoC)
 
+    // The target reverts to the fading video before it finishes: the queued one is forgotten.
+    var (reverted, revertedID) = fadingB()
+    _ = reverted.request(videoC, duration: 5, current: videoA, isPlaying: true, now: 2)
+    checkEqual(reverted.request(videoB, duration: 5, current: videoA, isPlaying: true, now: 3), [])
+    checkEqual(reverted.animationFinished(id: revertedID), [.promote(videoB)])
+
     // A cut requested mid-fade wins at once; the cut itself replaces both players.
     var (cut, _) = fadingB()
     checkEqual(cut.request(videoC, duration: 0, current: videoA, isPlaying: true, now: 2), [.cut(videoC)])
