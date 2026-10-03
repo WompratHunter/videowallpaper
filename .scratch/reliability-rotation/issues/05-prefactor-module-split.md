@@ -9,5 +9,6 @@
 - [ ] Multi-file build works (entry file is `main.swift`); Makefile and lint pick up all files
 - [ ] Each module exposes a small interface; wiring is the only place modules meet
 - [ ] Per-area core-logic and test files exist (empty placeholders allowed for Visibility/Flash), registered in the test runner
+- [ ] `.claude/CODING_STANDARDS.md` updated: the "single-file app" description and file-organisation rules reflect the module layout (so review doesn't flag the split)
 - [ ] Behaviour identical to after ticket 04 (all tests pass, manual smoke: video plays, Poster set)
 - [ ] `make build` green; `make install`
