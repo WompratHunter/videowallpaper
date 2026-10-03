@@ -65,11 +65,62 @@ final class WallpaperWindow: NSWindow {
     func pause() { player?.pause() }
     func resume() { player?.play() }
 
+    var playbackSeconds: Double? {
+        guard let time = player?.currentTime(), time.isNumeric else { return nil }
+        return time.seconds
+    }
+
+    func stateReport(sinceSeconds earlier: Double?) -> PlayerStateReport {
+        guard let player else { return .noPlayer }
+        let item = player.currentItem
+        return PlayerStateReport(
+            playerStatus: name(of: player.status),
+            itemStatus: item.map { name(of: $0.status) } ?? "none",
+            itemError: (item?.error ?? player.error).map(describe),
+            timeControl: name(of: player.timeControlStatus),
+            waitingReason: player.reasonForWaitingToPlay?.rawValue,
+            timeAdvanced: playbackAdvanced(from: earlier, to: playbackSeconds))
+    }
+
     func reassert() {
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
         orderBack(nil)
         if player?.timeControlStatus == .paused { player?.play() }
     }
+}
+
+// MARK: - AV state names
+
+private func name(of status: AVPlayer.Status) -> String {
+    switch status {
+    case .unknown: return "unknown"
+    case .readyToPlay: return "readyToPlay"
+    case .failed: return "failed"
+    @unknown default: return "rawValue\(status.rawValue)"
+    }
+}
+
+private func name(of status: AVPlayerItem.Status) -> String {
+    switch status {
+    case .unknown: return "unknown"
+    case .readyToPlay: return "readyToPlay"
+    case .failed: return "failed"
+    @unknown default: return "rawValue\(status.rawValue)"
+    }
+}
+
+private func name(of status: AVPlayer.TimeControlStatus) -> String {
+    switch status {
+    case .paused: return "paused"
+    case .waitingToPlayAtSpecifiedRate: return "waitingToPlayAtSpecifiedRate"
+    case .playing: return "playing"
+    @unknown default: return "rawValue\(status.rawValue)"
+    }
+}
+
+private func describe(_ error: Error) -> String {
+    let nsError = error as NSError
+    return "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
 }
 
 // MARK: - App delegate
@@ -82,18 +133,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let wallpaperDir = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        Log.write("launch", "pid=\(ProcessInfo.processInfo.processIdentifier) screens=\(NSScreen.screens.count)")
         buildWindows()
         startFolderWatch()
         startReassertTimer()
-        NSWorkspace.shared.notificationCenter.addObserver(
+        observeSystemEvents()
+        logPlayerState(cause: "launch")
+    }
+
+    private func observeSystemEvents() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(
             self, selector: #selector(screensSleep),
             name: NSWorkspace.screensDidSleepNotification, object: nil)
-        NSWorkspace.shared.notificationCenter.addObserver(
+        workspace.addObserver(
             self, selector: #selector(screensWake),
             name: NSWorkspace.screensDidWakeNotification, object: nil)
+        workspace.addObserver(
+            self, selector: #selector(systemWake),
+            name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(
+            self, selector: #selector(sessionActive),
+            name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        // Unlock has no public NSWorkspace notification; this distributed one is what the system posts.
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(screenUnlocked),
+            name: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    // MARK: - Diagnostics
+
+    /// Samples each player now and again a moment later, so the line records whether time actually advanced
+    /// rather than trusting timeControlStatus, which can claim "playing" for a dead player.
+    private func logPlayerState(cause: String) {
+        let samples = windows.map { ($0, $0.playbackSeconds) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            let video = self?.currentVideo?.lastPathComponent ?? "none"
+            for (index, sample) in samples.enumerated() {
+                let report = sample.0.stateReport(sinceSeconds: sample.1)
+                Log.write(cause, "screen=\(index) video=\(video) \(report)")
+            }
+            if samples.isEmpty { Log.write(cause, "screens=0 video=\(video) \(PlayerStateReport.noPlayer)") }
+        }
     }
 
     // MARK: - Window management
@@ -161,8 +245,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Notifications
 
-    @objc private func screensSleep() { windows.forEach { $0.pause() } }
-    @objc private func screensWake() { windows.forEach { $0.reassert() } }
+    @objc private func screensSleep() {
+        Log.write("screens-sleep", "pausing \(windows.count) player(s)")
+        windows.forEach { $0.pause() }
+    }
+
+    @objc private func screensWake() {
+        logPlayerState(cause: "screens-wake")
+        windows.forEach { $0.reassert() }
+    }
+
+    @objc private func systemWake() { logPlayerState(cause: "wake") }
+    @objc private func sessionActive() { logPlayerState(cause: "session-active") }
+    @objc private func screenUnlocked() { logPlayerState(cause: "unlock") }
     @objc private func screensChanged() { buildWindows() }
 }
 

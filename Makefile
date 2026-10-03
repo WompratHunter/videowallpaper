@@ -1,28 +1,38 @@
 APP       := $(HOME)/Applications/VideoWallpaper.app
 BINARY    := $(APP)/Contents/MacOS/videowallpaper
-SRC       := VideoWallpaper.swift
+BUILD_DIR := .build
+APP_SRC   := $(wildcard Sources/App/*.swift)
+CORE_SRC  := $(wildcard Sources/Core/*.swift)
+TEST_SRC  := $(wildcard Tests/*.swift)
 PLIST_SRC := com.videowallpaper.plist.template
 PLIST_DST := $(HOME)/Library/LaunchAgents/com.videowallpaper.plist
 LABEL     := com.videowallpaper
 VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 
-.PHONY: install uninstall build lint
+.PHONY: install uninstall build lint test
 
+# `build` compiles into .build/ only; `install` is the sole target that touches the installed app.
 install: build
-	@mkdir -p $(VIDEO_DIR) $(HOME)/Library/Logs
+	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(VIDEO_DIR) $(HOME)/Library/Logs
 	@cp Info.plist $(APP)/Contents/Info.plist
+	@install -m 755 $(BUILD_DIR)/videowallpaper $(BINARY)
 	@sed 's|__HOME__|$(HOME)|g' $(PLIST_SRC) > $(PLIST_DST)
 	@launchctl unload $(PLIST_DST) 2>/dev/null || true
 	@launchctl load $(PLIST_DST)
 	@echo "✓ Installed. Drop .mp4 files into $(VIDEO_DIR)/"
 
 lint:
-	swiftlint lint
+	swiftlint lint --strict --quiet
 
-build: lint
-	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
-	swiftc -O -framework AppKit -framework AVFoundation $(SRC) -o $(BINARY)
-	@echo "✓ Built $(BINARY)"
+test:
+	@mkdir -p $(BUILD_DIR)
+	swiftc $(CORE_SRC) $(TEST_SRC) -o $(BUILD_DIR)/tests
+	$(BUILD_DIR)/tests
+
+build: lint test
+	@mkdir -p $(BUILD_DIR)
+	swiftc -O -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
+	@echo "✓ Built $(BUILD_DIR)/videowallpaper"
 
 uninstall:
 	@launchctl unload $(PLIST_DST) 2>/dev/null || true

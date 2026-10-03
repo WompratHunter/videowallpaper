@@ -1,6 +1,6 @@
 # Coding Standards
 
-Swift-only, single-file macOS app. No Xcode project — compiled via `Makefile` with `swiftc`.
+Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`. App code lives in `Sources/App/` (entry file `main.swift`); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
 
 ## Language & Platform
 
@@ -60,6 +60,20 @@ Swift-only, single-file macOS app. No Xcode project — compiled via `Makefile` 
 - One blank line between methods; no blank lines inside short methods
 - Trailing closures for single-closure arguments; named labels for multi-closure calls
 - No trailing whitespace; files end with a newline
+
+## Logging
+
+- Log with `Log.write(cause, message)` (`Sources/Core/Log.swift`): one timestamped line to unbuffered stderr, which the LaunchAgent routes to `~/Library/Logs/videowallpaper.log`
+- Never `print` (lint bans it); every line names its cause (`launch`, `wake`, `unlock`, …)
+
+## Testing
+
+- Harness: a plain `swiftc`-compiled runner in `Tests/` — no SwiftPM, no XCTest. `make test` compiles `Sources/Core/*.swift` with `Tests/*.swift` into `.build/tests` and runs it
+- Use `check(_:_:)` / `checkEqual(_:_:)` from `Tests/Check.swift`; the runner exits non-zero if any check fails
+- One suite file per area (`Tests/<Area>Tests.swift`) exposing `run<Area>Tests()`, registered in `Tests/main.swift`
+- The seam is `Sources/Core/`: Foundation-only pure functions and value types. Anything that is a decision (Recovery, backoff, settle, flash counting, Rotation pick, visibility, log formatting) belongs there and must be tested; AppKit/AVFoundation code only gathers inputs and applies results
+- Tests assert the decision returned for given inputs, not internal state or call order; inject clocks and RNGs rather than reading them
+- Gate: `make build` runs lint (`--strict`), then tests, then compiles; any failure stops the build and `make install`
 
 ## Comments
 

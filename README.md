@@ -8,6 +8,7 @@ Plays any `.mp4` or `.mov` from `~/Movies/LiveWallpaper/`. Drop in a new file an
 
 - macOS 14+ (Sonoma or later)
 - Xcode Command Line Tools: `xcode-select --install`
+- SwiftLint (`make build` lints first): `brew install swiftlint`
 
 ## Install
 
@@ -27,7 +28,8 @@ Then drop a `.mp4` into `~/Movies/LiveWallpaper/`.
 | Stop | `launchctl unload ~/Library/LaunchAgents/com.videowallpaper.plist` |
 | Start | `launchctl load ~/Library/LaunchAgents/com.videowallpaper.plist` |
 | Uninstall | `make uninstall` |
-| Logs | `tail -f ~/Library/Logs/videowallpaper.log` |
+| Logs | `tail -f ~/Library/Logs/videowallpaper.log` (launch, wake and unlock lines include player state) |
+| Lint + test + compile | `make build` |
 
 ## How it works
 
