@@ -9,7 +9,7 @@ func runRecoveryTests() {
     runGraceTests()
     runWakeTests()
     runResumeGraceTests()
-    runResumePositionTests()
+    runRebuildPlanTests()
     runBackoffTests()
 }
 
@@ -118,7 +118,7 @@ private func runResumeGraceTests() {
     checkEqual(monitor.tick(sample(at: 225, 3.0)), .stuck)
 }
 
-private func runResumePositionTests() {
+private func runRebuildPlanTests() {
     let rain = URL(fileURLWithPath: "/v/rain.mp4")
     let sea = URL(fileURLWithPath: "/v/sea.mp4")
     // A rebuild re-picks from the folder: the same video resumes where it stopped, a replacement starts at 0.
