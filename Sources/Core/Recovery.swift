@@ -8,6 +8,13 @@ enum RecoveryCause: String {
     case failed
     case stuck
     case notPlayingOnWake = "not-playing-on-wake"
+    case fileMissing = "file-missing"
+    case retryAfterRest = "retry-after-rest"
+}
+
+/// Where a rebuilt player starts: the saved position for the same video, the beginning for a replacement.
+func resumePosition(rebuilding target: URL, current: URL?, saved: Double) -> Double {
+    target == current ? saved : 0
 }
 
 struct HealthSample {
@@ -26,7 +33,7 @@ struct RecoveryMonitor {
     private var hasBaseline = false
     private var lastSeconds: Double?
     private var stalledTicks = 0
-    private var lastRebuild: TimeInterval?
+    private var graceStart: TimeInterval?
 
     mutating func tick(_ sample: HealthSample) -> RecoveryCause? {
         guard sample.isIntendingToPlay else {
@@ -45,8 +52,13 @@ struct RecoveryMonitor {
     }
 
     mutating func noteRebuild(at now: TimeInterval) {
-        lastRebuild = now
+        graceStart = now
         restartBaseline()
+    }
+
+    /// Resuming after an intentional pause gets the same grace: a healthy player can take seconds to restart.
+    mutating func noteResume(at now: TimeInterval) {
+        noteRebuild(at: now)
     }
 
     /// On wake or unlock a healthy player is left alone; only one that is not actually playing is rebuilt.
@@ -59,8 +71,8 @@ struct RecoveryMonitor {
     }
 
     private func isInGrace(at now: TimeInterval) -> Bool {
-        guard let lastRebuild else { return false }
-        return now - lastRebuild < Self.gracePeriod
+        guard let graceStart else { return false }
+        return now - graceStart < Self.gracePeriod
     }
 
     private mutating func restartBaseline() {

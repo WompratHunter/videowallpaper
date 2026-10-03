@@ -8,6 +8,8 @@ func runRecoveryTests() {
     runFailedTests()
     runGraceTests()
     runWakeTests()
+    runResumeGraceTests()
+    runResumePositionTests()
     runBackoffTests()
 }
 
@@ -103,6 +105,26 @@ private func runWakeTests() {
     checkEqual(
         monitor.verdictAfterWake(at: 70, timeAdvanced: false, isIntendingToPlay: true, hasFailed: false),
         .notPlayingOnWake)
+}
+
+private func runResumeGraceTests() {
+    // After display sleep a healthy player can take seconds to restart, so resuming starts the same grace.
+    var monitor = RecoveryMonitor()
+    monitor.noteResume(at: 200)
+    checkEqual(monitor.verdictAfterWake(at: 201, timeAdvanced: false, isIntendingToPlay: true, hasFailed: false), nil)
+    checkEqual(monitor.tick(sample(at: 205, 3.0)), nil)
+    checkEqual(monitor.tick(sample(at: 210, 3.0)), nil)
+    checkEqual(monitor.tick(sample(at: 220, 3.0)), nil)
+    checkEqual(monitor.tick(sample(at: 225, 3.0)), .stuck)
+}
+
+private func runResumePositionTests() {
+    let rain = URL(fileURLWithPath: "/v/rain.mp4")
+    let sea = URL(fileURLWithPath: "/v/sea.mp4")
+    // Rebuilding the same video resumes where it stopped; a replacement video starts from the beginning.
+    checkEqual(resumePosition(rebuilding: rain, current: rain, saved: 42.5), 42.5)
+    checkEqual(resumePosition(rebuilding: sea, current: rain, saved: 42.5), 0)
+    checkEqual(resumePosition(rebuilding: sea, current: nil, saved: 42.5), 0)
 }
 
 private func runBackoffTests() {

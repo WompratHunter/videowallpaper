@@ -15,6 +15,7 @@ final class Player {
     private var queuePlayer: AVQueuePlayer?
     private var looper: AVPlayerLooper?
     private var observations: [NSKeyValueObservation] = []
+    private var failureObserver: NSObjectProtocol?
     private let videoLayers = NSHashTable<AVPlayerLayer>.weakObjects()
     private let posterLayers = NSHashTable<CALayer>.weakObjects()
     private var poster: CGImage?
@@ -25,7 +26,8 @@ final class Player {
     private var savedSeconds: Double = 0
     private var isIntendingToPlay = true
 
-    private var failureObserver: NSObjectProtocol?
+    private var shouldBePlaying: Bool { isIntendingToPlay && video != nil }
+    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     init() {
         failureObserver = NotificationCenter.default.addObserver(
@@ -35,12 +37,136 @@ final class Player {
                   self.queuePlayer?.items().contains(item) == true
             else { return }
             let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error).map(describe)
-            self.recover(cause: RecoveryCause.failed.rawValue, detail: "failed-to-play-to-end \(error ?? "")")
+            self.recover(cause: .failed, detail: "failed-to-play-to-end \(error ?? "")")
         }
     }
 
-    // MARK: - Layers
+    deinit {
+        failureObserver.map(NotificationCenter.default.removeObserver)
+        pendingRebuild?.cancel()
+    }
 
+    // MARK: - Playback
+
+    func show(_ url: URL, at seconds: Double = 0) {
+        pendingRebuild?.cancel()
+        pendingRebuild = nil
+        tearDown()
+        let changed = url != video
+        video = url
+        savedSeconds = seconds
+        pendingSeek = seconds > 0 ? seconds : nil
+        let item = AVPlayerItem(url: url)
+        let player = AVQueuePlayer(playerItem: item)
+        player.isMuted = true
+        player.preventsDisplaySleepDuringVideoPlayback = false
+        let newLooper = AVPlayerLooper(player: player, templateItem: item)
+        queuePlayer = player
+        looper = newLooper
+        observe(player, newLooper)
+        videoLayers.allObjects.forEach { $0.player = player }
+        monitor.noteRebuild(at: now)
+        if isIntendingToPlay && pendingSeek == nil { player.play() }
+        if changed { onVideoChange(url) }
+    }
+
+    func pause() {
+        isIntendingToPlay = false
+        if pendingSeek == nil, let seconds = playbackSeconds { savedSeconds = seconds }
+        queuePlayer?.pause()
+    }
+
+    func resume() {
+        if !isIntendingToPlay { monitor.noteResume(at: now) }
+        isIntendingToPlay = true
+        if pendingSeek == nil { queuePlayer?.play() }
+    }
+
+    func resetBackoff(on event: RecoveryBackoff.ResetEvent) {
+        let wasResting = backoff.isResting
+        backoff.reset(on: event)
+        if wasResting { recover(cause: .retryAfterRest, detail: "on \(event.rawValue)") }
+    }
+
+    // MARK: - Health
+
+    /// Runs on the app's shared 5 s tick: compares playback time with the previous tick.
+    func healthTick() {
+        guard pendingRebuild == nil, !backoff.isResting else { return }
+        let seconds = playbackSeconds
+        let sample = HealthSample(
+            now: now, playbackSeconds: seconds, isIntendingToPlay: shouldBePlaying, hasFailed: hasFailed)
+        if let cause = monitor.tick(sample) {
+            recover(cause: cause, detail: stateReport(sinceSeconds: nil).description)
+        } else if isIntendingToPlay, pendingSeek == nil, let seconds {
+            // Not while a resume seek is pending: currentTime() is still 0 and would lose the saved position.
+            savedSeconds = seconds
+        }
+    }
+
+    /// Samples playback now and a moment later, logs the state, and rebuilds only if not actually playing.
+    func verifyPlayback(cause: String) {
+        let sampledPlayer = queuePlayer
+        let earlier = playbackSeconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            let report = self.stateReport(sinceSeconds: earlier)
+            Log.write(cause, "video=\(self.video?.lastPathComponent ?? "none") \(report)")
+            // A player swapped in during the sample isn't comparable, and was just rebuilt anyway.
+            guard self.queuePlayer === sampledPlayer else { return }
+            let verdict = self.monitor.verdictAfterWake(
+                at: self.now, timeAdvanced: report.timeAdvanced,
+                isIntendingToPlay: self.shouldBePlaying, hasFailed: self.hasFailed)
+            if let verdict { self.recover(cause: verdict, detail: "on \(cause)") }
+        }
+    }
+
+    // MARK: - Recovery
+
+    /// Drops the player at once (the Poster shows), then rebuilds after the backoff delay or rests on the Poster.
+    func recover(cause: RecoveryCause, detail: String) {
+        guard pendingRebuild == nil, !backoff.isResting else { return }
+        let name = video?.lastPathComponent ?? "none"
+        tearDown()
+        guard let delay = backoff.nextDelay() else {
+            Log.write("recovery", "cause=\(cause.rawValue) video=\(name) resting on Poster after "
+                + "\(RecoveryBackoff.delays.count) attempts \(detail)")
+            return
+        }
+        Log.write("recovery", "cause=\(cause.rawValue) video=\(name) position=\(format(savedSeconds)) "
+            + "rebuild-in=\(Int(delay))s \(detail)")
+        let work = DispatchWorkItem { [weak self] in self?.rebuild() }
+        pendingRebuild = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func rebuild() {
+        pendingRebuild = nil
+        guard let target = videoProvider() ?? video else {
+            Log.write("recovery", "no video to rebuild; staying on Poster")
+            return
+        }
+        let resumeAt = resumePosition(rebuilding: target, current: video, saved: savedSeconds)
+        Log.write("recovery", "rebuilding video=\(target.lastPathComponent) at=\(format(resumeAt))")
+        show(target, at: resumeAt)
+    }
+
+    private func tearDown() {
+        observations.forEach { $0.invalidate() }
+        observations = []
+        looper?.disableLooping()
+        looper = nil
+        queuePlayer?.pause()
+        queuePlayer?.removeAllItems()
+        queuePlayer = nil
+        pendingSeek = nil
+        videoLayers.allObjects.forEach { $0.player = nil }
+    }
+}
+
+// MARK: - Layers
+
+extension Player {
     /// A Poster layer with the video layer above it, sized to `frame`; the caller's window only hosts it.
     func makeLayers(frame: CGRect) -> CALayer {
         let container = CALayer()
@@ -65,124 +191,12 @@ final class Player {
         poster = image
         posterLayers.allObjects.forEach { $0.contents = image }
     }
-
-    // MARK: - Playback
-
-    func show(_ url: URL, at seconds: Double = 0) {
-        pendingRebuild?.cancel()
-        pendingRebuild = nil
-        tearDown()
-        let changed = url != video
-        video = url
-        savedSeconds = seconds
-        pendingSeek = seconds > 0 ? seconds : nil
-        let item = AVPlayerItem(url: url)
-        let player = AVQueuePlayer(playerItem: item)
-        player.isMuted = true
-        player.preventsDisplaySleepDuringVideoPlayback = false
-        let newLooper = AVPlayerLooper(player: player, templateItem: item)
-        observe(player, newLooper)
-        queuePlayer = player
-        looper = newLooper
-        videoLayers.allObjects.forEach { $0.player = player }
-        monitor.noteRebuild(at: ProcessInfo.processInfo.systemUptime)
-        if isIntendingToPlay && pendingSeek == nil { player.play() }
-        if changed { onVideoChange(url) }
-    }
-
-    func pause() {
-        isIntendingToPlay = false
-        if let seconds = playbackSeconds { savedSeconds = seconds }
-        queuePlayer?.pause()
-    }
-
-    func resume() {
-        isIntendingToPlay = true
-        if pendingSeek == nil { queuePlayer?.play() }
-    }
-
-    func resetBackoff(on event: RecoveryBackoff.ResetEvent) {
-        let wasResting = backoff.isResting
-        backoff.reset(on: event)
-        if wasResting { Log.write(event.rawValue, "recovery backoff reset; leaving Poster rest") }
-    }
-
-    // MARK: - Health
-
-    /// Runs on the app's shared 5 s tick: compares playback time with the previous tick.
-    func healthTick() {
-        guard pendingRebuild == nil, !backoff.isResting else { return }
-        let seconds = playbackSeconds
-        let sample = HealthSample(
-            now: ProcessInfo.processInfo.systemUptime, playbackSeconds: seconds,
-            isIntendingToPlay: isIntendingToPlay && video != nil, hasFailed: hasFailed)
-        if let cause = monitor.tick(sample) {
-            recover(cause: cause.rawValue, detail: stateReport(sinceSeconds: nil).description)
-        } else if isIntendingToPlay, let seconds {
-            savedSeconds = seconds
-        }
-    }
-
-    /// Samples playback now and a moment later, logs the state, and rebuilds only if not actually playing.
-    func checkAfterWake(cause: String) {
-        let earlier = playbackSeconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self else { return }
-            let report = self.stateReport(sinceSeconds: earlier)
-            Log.write(cause, "video=\(self.video?.lastPathComponent ?? "none") \(report)")
-            let verdict = self.monitor.verdictAfterWake(
-                at: ProcessInfo.processInfo.systemUptime, timeAdvanced: report.timeAdvanced,
-                isIntendingToPlay: self.isIntendingToPlay && self.video != nil, hasFailed: self.hasFailed)
-            if let verdict { self.recover(cause: verdict.rawValue, detail: "on \(cause)") }
-        }
-    }
-
-    // MARK: - Recovery
-
-    /// Drops the player at once (the Poster shows), then rebuilds after the backoff delay or rests on the Poster.
-    func recover(cause: String, detail: String) {
-        guard pendingRebuild == nil, !backoff.isResting else { return }
-        let name = video?.lastPathComponent ?? "none"
-        tearDown()
-        guard let delay = backoff.nextDelay() else {
-            Log.write("recovery", "cause=\(cause) video=\(name) resting on Poster after "
-                + "\(RecoveryBackoff.delays.count) attempts \(detail)")
-            return
-        }
-        Log.write("recovery", "cause=\(cause) video=\(name) position=\(String(format: "%.1f", savedSeconds)) "
-            + "rebuild-in=\(Int(delay))s \(detail)")
-        let work = DispatchWorkItem { [weak self] in self?.rebuild() }
-        pendingRebuild = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
-
-    private func rebuild() {
-        pendingRebuild = nil
-        guard let target = videoProvider() ?? video else {
-            Log.write("recovery", "no video to rebuild; staying on Poster")
-            return
-        }
-        let resumeAt = target == video ? savedSeconds : 0
-        Log.write("recovery", "rebuilding video=\(target.lastPathComponent) at=\(String(format: "%.1f", resumeAt))")
-        show(target, at: resumeAt)
-    }
-
-    private func tearDown() {
-        observations.forEach { $0.invalidate() }
-        observations = []
-        looper?.disableLooping()
-        looper = nil
-        queuePlayer?.pause()
-        queuePlayer?.removeAllItems()
-        queuePlayer = nil
-        videoLayers.allObjects.forEach { $0.player = nil }
-    }
 }
 
 // MARK: - Observation and state
 
 extension Player {
-    var playbackSeconds: Double? {
+    private var playbackSeconds: Double? {
         guard let time = queuePlayer?.currentTime(), time.isNumeric else { return nil }
         return time.seconds
     }
@@ -193,7 +207,7 @@ extension Player {
             || looper?.status == .failed
     }
 
-    func stateReport(sinceSeconds earlier: Double?) -> PlayerStateReport {
+    private func stateReport(sinceSeconds earlier: Double?) -> PlayerStateReport {
         guard let queuePlayer else { return .noPlayer }
         let item = queuePlayer.currentItem
         return PlayerStateReport(
@@ -205,8 +219,8 @@ extension Player {
             timeAdvanced: playbackAdvanced(from: earlier, to: playbackSeconds))
     }
 
-    fileprivate func observe(_ player: AVQueuePlayer, _ looper: AVPlayerLooper) {
-        let itemStatus = player.observe(\.currentItem?.status, options: [.new]) { [weak self] _, _ in
+    private func observe(_ player: AVQueuePlayer, _ looper: AVPlayerLooper) {
+        let itemStatus = player.observe(\.currentItem?.status, options: [.initial, .new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.itemStatusChanged() }
         }
         let looperStatus = looper.observe(\.status, options: [.new]) { [weak self] looper, _ in
@@ -223,11 +237,12 @@ extension Player {
             reportFailure("item failed")
         case .readyToPlay:
             guard let seconds = pendingSeek else { return }
-            pendingSeek = nil
             // Seek before playing so a rebuilt player resumes where the old one stopped, not at 0.
             player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600)) { [weak self, weak player] _ in
                 DispatchQueue.main.async {
-                    if self?.isIntendingToPlay == true { player?.play() }
+                    guard let self, let player, player === self.queuePlayer else { return }
+                    self.pendingSeek = nil
+                    if self.isIntendingToPlay { player.play() }
                 }
             }
         default:
@@ -236,8 +251,10 @@ extension Player {
     }
 
     private func reportFailure(_ what: String) {
-        recover(cause: RecoveryCause.failed.rawValue, detail: "\(what) \(stateReport(sinceSeconds: nil))")
+        recover(cause: .failed, detail: "\(what) \(stateReport(sinceSeconds: nil))")
     }
+
+    private func format(_ seconds: Double) -> String { String(format: "%.1f", seconds) }
 }
 
 // MARK: - AV state names

@@ -62,12 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("launch", "pid=\(ProcessInfo.processInfo.processIdentifier) screens=\(NSScreen.screens.count)")
         player.videoProvider = { [weak self] in self.flatMap { newestVideo(in: $0.wallpaperDir) } }
         player.onVideoChange = { [weak self] url in self?.exportPoster(from: url) }
+        loadSavedPoster()
         buildWindows()
         loadVideo()
         startFolderWatch()
         startTickTimer()
         observeSystemEvents()
-        player.checkAfterWake(cause: "launch")
+        player.verifyPlayback(cause: "launch")
     }
 
     private func observeSystemEvents() {
@@ -103,8 +104,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadVideo() {
+        // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), which then
+        // picks the newest remaining video; AVFoundation may otherwise keep playing the old open file.
+        if let current = player.video, !FileManager.default.fileExists(atPath: current.path) {
+            player.recover(cause: .fileMissing, detail: "on folder-change")
+            return
+        }
         guard let url = newestVideo(in: wallpaperDir), url != player.video else { return }
         player.show(url)
+    }
+
+    /// The last exported Poster, so the underlay isn't empty while the new one is generated at launch.
+    private func loadSavedPoster() {
+        let url = wallpaperDir.appendingPathComponent(".poster.jpg")
+        guard let image = NSImage(contentsOf: url)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return }
+        player.setPoster(image)
     }
 
     // MARK: - Folder watching
@@ -175,19 +190,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.forEach { $0.reassert() }
         player.resetBackoff(on: .wake)
         player.resume()
-        player.checkAfterWake(cause: "screens-wake")
+        player.verifyPlayback(cause: "screens-wake")
     }
 
     @objc private func systemWake() {
         player.resetBackoff(on: .wake)
-        player.checkAfterWake(cause: "wake")
+        player.verifyPlayback(cause: "wake")
     }
 
-    @objc private func sessionActive() { player.checkAfterWake(cause: "session-active") }
+    @objc private func sessionActive() { player.verifyPlayback(cause: "session-active") }
 
     @objc private func screenUnlocked() {
         player.resetBackoff(on: .unlock)
-        player.checkAfterWake(cause: "unlock")
+        player.verifyPlayback(cause: "unlock")
     }
 
     @objc private func screensChanged() { buildWindows() }
