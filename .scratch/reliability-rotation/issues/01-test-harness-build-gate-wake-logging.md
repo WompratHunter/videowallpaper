@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Pure logic lives in a Foundation-only core location that the test build compiles automatically; the app build compiles it too
 - [x] Plain `swiftc` test runner with a tiny check helper that exits non-zero on failure; one test suite file per area, registered in the runner's entry point
@@ -13,7 +13,7 @@
 - [x] Logging helper writes timestamped lines to stderr without `print`; launch and every wake/unlock log one player-state line
 - [x] `.claude/CODING_STANDARDS.md` gains a short Testing section (harness, seam = core logic, what must be tested, `make build` gate)
 - [x] At least one real test exists (e.g. for the timestamp/log-line formatting or a trivial core helper) and passes
-- [ ] `make install` succeeds and the log file shows the launch line
+- [x] `make install` succeeds and the log file shows the launch line
 
 ## Comments
 
