@@ -10,7 +10,7 @@ func newestVideo(in dir: URL) -> URL? {
         options: [.skipsHiddenFiles])
     else { return nil }
     return items
-        .filter { ["mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }
+        .filter { isWallpaperVideo(named: $0.lastPathComponent) }
         .max {
             let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey])
                 .contentModificationDate) ?? .distantPast
@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
     private var windows: [WallpaperWindow] = []
     private var folderWatch: DispatchSourceFileSystemObject?
+    private var videoFiles: [String: Date] = [:]
     private var tickTimer: Timer?
     private let wallpaperDir = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
 
@@ -132,13 +133,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fileDescriptor: fd,
             eventMask: [.write, .rename, .delete],
             queue: .main)
-        src.setEventHandler { [weak self] in
-            self?.player.resetBackoff(on: .folderChange)
-            self?.loadVideo()
-        }
+        videoFiles = currentVideoListing()
+        src.setEventHandler { [weak self] in self?.folderChanged() }
         src.setCancelHandler { close(fd) }
         src.resume()
         folderWatch = src
+    }
+
+    private func folderChanged() {
+        let listing = currentVideoListing()
+        guard listing != videoFiles else { return }
+        videoFiles = listing
+        player.resetBackoff(on: .folderChange)
+        loadVideo()
+    }
+
+    private func currentVideoListing() -> [String: Date] {
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: wallpaperDir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        var entries: [String: Date] = [:]
+        for item in items {
+            entries[item.lastPathComponent] = (try? item.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? .distantPast
+        }
+        return videoListing(of: entries)
     }
 
     // MARK: - Poster for the window underlay, Mission Control and the Lock screen

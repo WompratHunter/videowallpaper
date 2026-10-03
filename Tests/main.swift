@@ -4,4 +4,5 @@
 runLogTests()
 runPlayerStateReportTests()
 runRecoveryTests()
+runWallpaperFolderTests()
 finishTests()
