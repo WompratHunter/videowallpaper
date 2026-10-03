@@ -72,6 +72,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 - Use `check(_:_:)` / `checkEqual(_:_:)` from `Tests/Check.swift`; the runner exits non-zero if any check fails
 - One suite file per area (`Tests/<Area>Tests.swift`) exposing `run<Area>Tests()`, registered in `Tests/main.swift`
 - The seam is `Sources/Core/`: Foundation-only pure functions and value types. Anything that is a decision (Recovery, backoff, settle, flash counting, Rotation pick, visibility, log formatting) belongs there and must be tested; AppKit/AVFoundation code only gathers inputs and applies results
+- State transitions belong in Core too: when a decision depends on state the app also mutates (e.g. reading "is recovering" vs resetting the backoff), Core takes the current state and returns the action plus the next state, so ordering is tested; app code only applies the returned action
 - Tests assert the decision returned for given inputs, not internal state or call order; inject clocks and RNGs rather than reading them
 - Gate: `make build` runs lint (`--strict`), then tests, then compiles; any failure stops the build and `make install`
 
