@@ -1,8 +1,8 @@
 import Foundation
 
 // MARK: - Visibility classification
-// Whether anyone can see the Live wallpaper (see CONTEXT.md). Ticket 07 adds the full classification, coverage
-// computation and the transition each state allows; until then only the all-occluded check drives playback.
+// Whether anyone can see the Live wallpaper (see CONTEXT.md). So far only the all-occluded check exists, and it
+// drives playback directly.
 
 enum VisibilityState: String, Equatable {
     case unseen

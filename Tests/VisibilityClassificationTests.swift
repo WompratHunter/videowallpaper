@@ -1,8 +1,8 @@
 import Foundation
 
-// MARK: - Visibility tests
+// MARK: - Visibility classification tests
 
-func runVisibilityTests() {
+func runVisibilityClassificationTests() {
     runOcclusionTests()
 }
 

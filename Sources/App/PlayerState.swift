@@ -13,7 +13,7 @@ extension AVQueuePlayer {
         return PlayerStateReport(
             playerStatus: name(of: status),
             itemStatus: item.map { name(of: $0.status) } ?? "none",
-            itemError: (item?.error ?? error ?? looper?.error).map(describeError),
+            itemError: (item?.error ?? error ?? looper?.error).map(describe),
             timeControl: name(of: timeControlStatus),
             waitingReason: reasonForWaitingToPlay?.rawValue,
             timeAdvanced: timeAdvanced)
@@ -49,7 +49,7 @@ private func name(of status: AVPlayer.TimeControlStatus) -> String {
     }
 }
 
-func describeError(_ error: Error) -> String {
+func describe(_ error: Error) -> String {
     let nsError = error as NSError
     return "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
 }

@@ -35,7 +35,7 @@ final class Player {
             guard let self, let item = note.object as? AVPlayerItem,
                   self.queuePlayer?.items().contains(item) == true
             else { return }
-            let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error).map(describeError)
+            let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error).map(describe)
             self.recover(cause: .failed, detail: "failed-to-play-to-end \(error ?? "")")
         }
     }

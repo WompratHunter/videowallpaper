@@ -13,7 +13,7 @@ runWallpaperFolderTests()
 runPosterFilesTests()
 runFlashTests()
 // Visibility
-runVisibilityTests()
+runVisibilityClassificationTests()
 // Rotation
 runRotationTests()
 // Footprint: original desktop pictures and restore

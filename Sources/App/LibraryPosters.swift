@@ -13,7 +13,7 @@ struct PosterImage {
 extension Library {
     /// The video's saved Poster, read synchronously so the underlay isn't empty while the player starts.
     func savedPoster(for video: URL) -> CGImage? {
-        posterURL(for: video).flatMap(Self.loadImage)
+        Self.posterURL(for: video).flatMap(Self.loadImage)
     }
 
     /// Reuses the video's saved Poster, or exports and saves one, then calls `use` on the main queue. `use` returns
@@ -21,23 +21,12 @@ extension Library {
     /// Decoding a 4K JPEG takes long enough to stall the main thread, so the saved Poster is read in the background.
     func poster(for video: URL, use: @escaping (PosterImage) -> Bool) {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let poster = posterURL(for: video) else { return }
+            guard let poster = Self.posterURL(for: video) else { return }
             guard let image = Self.loadImage(poster) else {
                 DispatchQueue.main.async { [weak self] in self?.exportPoster(from: video, to: poster, use: use) }
                 return
             }
             DispatchQueue.main.async { _ = use(PosterImage(image: image, file: poster)) }
-        }
-    }
-
-    /// Earlier versions wrote the Poster into the Wallpaper folder; it now lives in Application Support.
-    func removeLegacyPoster() {
-        guard FileManager.default.fileExists(atPath: AppFiles.legacyPoster.path) else { return }
-        do {
-            try FileManager.default.removeItem(at: AppFiles.legacyPoster)
-            Log.write("launch", "removed legacy Poster from the Wallpaper folder")
-        } catch {
-            Log.write("launch", "cannot remove legacy Poster: \(error.localizedDescription)")
         }
     }
 
@@ -75,21 +64,21 @@ extension Library {
     /// Posters of videos no longer in the folder are deleted, so Application Support doesn't grow forever.
     private func pruneStalePosters(current: URL) {
         // Named by posterURL(for:), like the Poster just saved, so a fresh Poster is never pruned.
-        let keep = Set(videoSnapshot(of: directory).keys.compactMap {
-            posterURL(for: directory.appendingPathComponent($0))?.lastPathComponent
+        let keep = Set(Self.videoSnapshot(of: directory).keys.compactMap {
+            Self.posterURL(for: directory.appendingPathComponent($0))?.lastPathComponent
         })
         let names = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
         for name in stalePosters(in: names, keeping: keep, current: current.lastPathComponent) {
             try? FileManager.default.removeItem(at: AppFiles.posterDirectory.appendingPathComponent(name))
         }
     }
-}
 
-/// Where a video's Poster is kept: its name changes when the file is replaced, so a stale Poster is never shown.
-func posterURL(for video: URL) -> URL? {
-    guard let values = try? video.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
-          let size = values.fileSize, let modified = values.contentModificationDate
-    else { return nil }
-    let file = VideoFile(size: Int64(size), modified: modified)
-    return AppFiles.posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
+    /// Where a video's Poster is kept: its name changes when the file is replaced, so a stale Poster is never shown.
+    private static func posterURL(for video: URL) -> URL? {
+        guard let values = try? video.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+              let size = values.fileSize, let modified = values.contentModificationDate
+        else { return nil }
+        let file = VideoFile(size: Int64(size), modified: modified)
+        return AppFiles.posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
+    }
 }

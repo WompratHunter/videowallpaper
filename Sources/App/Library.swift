@@ -37,14 +37,43 @@ final class Library {
     }
 }
 
+// MARK: - Folder listing
+
+extension Library {
+    /// The folder's videos with size and modification date, for the settle check.
+    static func videoSnapshot(of dir: URL) -> [String: VideoFile] {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey]
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: Array(keys))) ?? []
+        var entries: [String: VideoFile] = [:]
+        for item in items {
+            let values = try? item.resourceValues(forKeys: keys)
+            entries[item.lastPathComponent] = VideoFile(
+                size: Int64(values?.fileSize ?? 0), modified: values?.contentModificationDate ?? .distantPast)
+        }
+        return videoListing(of: entries)
+    }
+}
+
 // MARK: - Folder watching
 
 extension Library {
+    /// Earlier versions wrote the Poster into the Wallpaper folder; it now lives in Application Support.
+    private func removeLegacyPoster() {
+        guard FileManager.default.fileExists(atPath: AppFiles.legacyPoster.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: AppFiles.legacyPoster)
+            Log.write("launch", "removed legacy Poster from the Wallpaper folder")
+        } catch {
+            Log.write("launch", "cannot remove legacy Poster: \(error.localizedDescription)")
+        }
+    }
+
     private func startFolderWatch() {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // Seeded before the watch so videos still play if it can't be opened; a copy still running at launch
         // waits for the first check like any other.
-        settler = FolderSettler(launch: videoSnapshot(of: directory), now: Date())
+        settler = FolderSettler(launch: Self.videoSnapshot(of: directory), now: Date())
         scheduleSettleCheck()
         let fd = open(directory.path, O_EVTONLY)
         guard fd >= 0 else {
@@ -62,7 +91,7 @@ extension Library {
     }
 
     private func folderChanged() {
-        guard settler.noteEvent(videoSnapshot(of: directory)) else { return }
+        guard settler.noteEvent(Self.videoSnapshot(of: directory)) else { return }
         scheduleSettleCheck()
     }
 
@@ -74,26 +103,10 @@ extension Library {
 
     /// Only settled videos reach the player, so a file still being copied is never loaded.
     private func settleCheck() {
-        let outcome = settler.check(videoSnapshot(of: directory))
+        let outcome = settler.check(Self.videoSnapshot(of: directory))
         if outcome.needsAnotherCheck { scheduleSettleCheck() }
         guard outcome.isReadyChanged else { return }
         Log.write("folder-change", "settled videos=\(settler.ready.count)")
         onChange(videoToPlay())
     }
-}
-
-// MARK: - Folder listing
-
-/// The folder's videos with size and modification date, for the settle check.
-func videoSnapshot(of dir: URL) -> [String: VideoFile] {
-    let keys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey]
-    let items = (try? FileManager.default.contentsOfDirectory(
-        at: dir, includingPropertiesForKeys: Array(keys))) ?? []
-    var entries: [String: VideoFile] = [:]
-    for item in items {
-        let values = try? item.resourceValues(forKeys: keys)
-        entries[item.lastPathComponent] = VideoFile(
-            size: Int64(values?.fileSize ?? 0), modified: values?.contentModificationDate ?? .distantPast)
-    }
-    return videoListing(of: entries)
 }
