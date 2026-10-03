@@ -25,7 +25,7 @@
   - If the playing file disappears on a folder change, that logs `cause=file-missing` and starts Recovery.
   - Ending a rest on the Poster (on wake, unlock or folder change) logs `cause=retry-after-rest`.
   - Launch and `session-active` also run the playback verification, which is protected by the grace window.
-- Known interaction left for ticket 04: `.poster.jpg` is still written into the Wallpaper folder. That fires the folder watcher, so each Poster export also resets the backoff. At launch, the last `.poster.jpg` is loaded as the initial underlay. Before any Poster exists, the window background is black.
+- Known interaction left for ticket 04: `.poster.jpg` is still written into the Wallpaper folder. That fires the folder watcher, but folder events only reset the backoff when the set of videos (names and modification dates, hidden files excluded) changes, so Poster exports and `.DS_Store` writes are ignored (`Sources/Core/WallpaperFolder.swift`). At launch, the last `.poster.jpg` is loaded as the initial underlay. Before any Poster exists, the window background is black.
 - Still to verify manually after `make install`:
   - The app is visibly playing on all displays, from one decoder: `top` shows a single process with low CPU.
   - Rename the playing video mid-play. The log should show `[recovery] cause=file-missing`, the Poster should show for about 10 s, then `rebuilding video=<newest>` and playback.

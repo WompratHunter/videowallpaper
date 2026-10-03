@@ -45,6 +45,8 @@ final class WallpaperWindow: NSWindow {
 
     func reassert() {
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
+        // orderFront only reorders within the desktop level, so the window stays above the system desktop picture
+        // (orderBack can sink beneath it) yet below the higher desktop-icon level; it never makes the window key.
         orderFront(nil)
     }
 }
