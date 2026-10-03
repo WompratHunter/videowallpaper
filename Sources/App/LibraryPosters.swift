@@ -11,9 +11,27 @@ struct PosterImage {
 }
 
 extension Library {
-    /// The video's saved Poster, read synchronously so the underlay isn't empty while the player starts.
-    func savedPoster(for video: URL) -> CGImage? {
-        Self.posterURL(for: video).flatMap(Self.loadImage)
+    /// The launch underlay, read synchronously so the window is never empty while the player starts or while the
+    /// first Analysis runs: the saved Poster of the video to play, else of another video that isn't Excluded, else
+    /// the desktop picture, else any saved Poster (see `underlayCandidates`).
+    func launchUnderlay(toPlay video: URL?, desktopPicture: URL?) -> CGImage? {
+        let saved = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
+        let candidates = underlayCandidates(
+            toPlay: video.flatMap(Self.posterURL)?.lastPathComponent,
+            waiting: videosNotExcluded().compactMap { Self.posterURL(for: $0)?.lastPathComponent },
+            saved: saved)
+        for candidate in candidates {
+            let url: URL?
+            switch candidate {
+            case .poster(let name): url = AppFiles.posterDirectory.appendingPathComponent(name)
+            case .desktopPicture: url = desktopPicture
+            }
+            guard let url, let image = Self.loadImage(url) else { continue }
+            if video == nil { Log.write("launch", "no screened video yet; underlay=\(url.lastPathComponent)") }
+            return image
+        }
+        Log.write("launch", "no Poster or desktop picture to show under the video")
+        return nil
     }
 
     /// Reuses the video's saved Poster (normally saved by its Analysis), or exports and saves one, then calls `use` on

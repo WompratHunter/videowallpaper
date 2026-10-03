@@ -5,6 +5,33 @@ import Foundation
 func runPosterFilesTests() {
     runPosterNameTests()
     runStalePosterTests()
+    runUnderlayTests()
+}
+
+private func runUnderlayTests() {
+    let playing = "poster-000000000000000a.jpg"
+    let newer = "poster-000000000000000b.jpg"
+    let older = "poster-000000000000000c.jpg"
+    let previousVersion = "poster-00000000000000ff.jpg"
+    // The video to play has its Poster: it comes first, then the others', then the desktop picture.
+    checkEqual(
+        underlayCandidates(toPlay: playing, waiting: [newer, older], saved: [older, playing, newer]),
+        [.poster(playing), .poster(newer), .poster(older), .desktopPicture])
+    // First launch after install: nothing analysed, no Posters yet. The desktop picture shows, not black.
+    checkEqual(underlayCandidates(toPlay: nil, waiting: [newer, older], saved: []), [.desktopPicture])
+    // Nothing analysed yet, but a waiting video has a saved Poster: it shows (a still can't flash).
+    checkEqual(
+        underlayCandidates(toPlay: nil, waiting: [newer, older], saved: [older, ".DS_Store"]),
+        [.poster(older), .desktopPicture])
+    // Upgrade: only Posters named by an earlier version remain; they are a last resort after the desktop picture.
+    checkEqual(
+        underlayCandidates(toPlay: nil, waiting: [newer], saved: [previousVersion]),
+        [.desktopPicture, .poster(previousVersion)])
+    // The video to play listed again among the waiting ones is tried once.
+    checkEqual(
+        underlayCandidates(toPlay: newer, waiting: [newer], saved: [newer]), [.poster(newer), .desktopPicture])
+    // An empty folder still has the desktop picture.
+    checkEqual(underlayCandidates(toPlay: nil, waiting: [], saved: []), [.desktopPicture])
 }
 
 private func runPosterNameTests() {

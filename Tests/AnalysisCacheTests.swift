@@ -73,6 +73,12 @@ private func runEligibleVideoTests() {
         ["rain.mp4", "strobe.mp4"])
     // An analysis for a video no longer settled is ignored.
     checkEqual(screenEligible(settled: ["pending.mp4": newer], analyses: analyses, overrides: []), [])
+    // Stand-ins at launch: the unanalysed video counts (its Poster is a still), the Excluded one doesn't.
+    checkEqual(notExcludedNewestFirst(settled: settled, analyses: analyses, overrides: []), ["pending.mp4", "rain.mp4"])
+    checkEqual(
+        notExcludedNewestFirst(settled: settled, analyses: analyses, overrides: ["strobe.mp4"]),
+        ["strobe.mp4", "pending.mp4", "rain.mp4"])
+    checkEqual(notExcludedNewestFirst(settled: [:], analyses: analyses, overrides: []), [])
 }
 
 private func runAnalysisOrderTests() {

@@ -62,6 +62,18 @@ final class Library {
         }
         return screenEligible(settled: settled, analyses: analysed, overrides: flashOverrides())
     }
+
+    /// Settled videos that aren't Excluded, analysed or not, newest first: those whose Poster may stand in at launch.
+    func videosNotExcluded() -> [URL] {
+        let present = Self.videoSnapshot(of: directory)
+        var analysed: [String: Analysis] = [:]
+        for (name, file) in present {
+            analysed[name] = analyses.analysis(of: directory.appendingPathComponent(name), file: file)
+        }
+        return notExcludedNewestFirst(
+            settled: settler.ready.filter { present[$0.key] != nil }, analyses: analysed, overrides: flashOverrides()
+        ).map { directory.appendingPathComponent($0) }
+    }
 }
 
 // MARK: - Eligibility

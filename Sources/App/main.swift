@@ -21,7 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Analysis starts or player is built.
         library.isPowerSaving = ProcessInfo.processInfo.isLowPowerModeEnabled
         library.start()
-        if let video = library.videoToPlay(), let image = library.savedPoster(for: video) { player.setPoster(image) }
+        // Unscreened videos never play, so until the first Analysis the underlay is a still: never black.
+        let underlay = library.launchUnderlay(
+            toPlay: library.videoToPlay(), desktopPicture: DesktopPictures.mainScreenPicture())
+        if let underlay { player.setPoster(underlay) }
         player.apply(.lowPower(ProcessInfo.processInfo.isLowPowerModeEnabled))
         windows.rebuild()
         player.start()

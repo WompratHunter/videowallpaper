@@ -49,7 +49,7 @@ Versions before this one wrote a hidden `.poster.jpg` into the video folder; the
 
 ## Analysis and the flash screener
 
-Each video is analysed once, in the background at low priority, one at a time, and not in Low Power Mode (one in progress stops, and a new video waits until Low Power Mode ends). Analysis decodes every frame at reduced resolution to measure the video's mean brightness (relative luminance) and its flash rate, and takes the Poster from the frame closest to the mean brightness, so the Lock screen doesn't show a dark intro frame. A 20 s 4K video takes a few seconds and under half a second of CPU. A video plays only once it has been analysed.
+Each video is analysed once, in the background at low priority, one at a time, and not in Low Power Mode (one in progress stops, and a new video waits until Low Power Mode ends). Analysis decodes every frame at reduced resolution to measure the video's mean brightness (relative luminance) and its flash rate, and takes the Poster from the frame closest to the mean brightness, so the Lock screen doesn't show a dark intro frame. A 20 s 4K video takes a few seconds and under half a second of CPU. A video plays only once it has been analysed; until then the screen shows a saved Poster or, on a first install, your current desktop picture, never black.
 
 The flash check is an **approximate screener** modelled on the WCAG 2.3.1 general flash threshold, not a conformance assessment:
 

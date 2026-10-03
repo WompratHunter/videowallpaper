@@ -37,6 +37,11 @@ enum DesktopPictures {
         return pictures
     }
 
+    /// The main screen's current picture, a stand-in underlay while the first Analysis runs.
+    static func mainScreenPicture() -> URL? {
+        NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0) }
+    }
+
     /// Sets the Poster on every screen, first recording any original picture not yet recorded.
     static func setPoster(_ poster: URL) {
         recordOriginals()

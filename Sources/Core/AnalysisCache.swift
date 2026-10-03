@@ -91,6 +91,20 @@ func screenEligible(
     .sorted { $0.name < $1.name }
 }
 
+/// Settled videos not Excluded for flashing, whether analysed yet or not, newest first. Not a list to play (an
+/// unanalysed video is unscreened); their Posters are stills that can stand in at launch.
+func notExcludedNewestFirst(
+    settled: [String: Date], analyses: [String: Analysis], overrides: [String]
+) -> [String] {
+    settled.filter { name, _ in
+        analyses[name].map {
+            flashVerdict(flashesPerSecond: $0.flashesPerSecond, fileName: name, overrides: overrides).isPlayable
+        } ?? true
+    }
+    .sorted { ($0.value, $0.key) > ($1.value, $1.key) }
+    .map(\.key)
+}
+
 /// Settled videos still waiting for Analysis, newest first so the video most likely to play is ready soonest.
 func videosToAnalyse(settled: [String: Date], analysed: Set<String>) -> [String] {
     settled.filter { !analysed.contains($0.key) }

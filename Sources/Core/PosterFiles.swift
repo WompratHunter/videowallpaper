@@ -33,3 +33,27 @@ func isPosterFileName(_ name: String) -> Bool {
 func stalePosters(in names: [String], keeping keep: Set<String>, current: String) -> [String] {
     names.filter { isPosterFileName($0) && !keep.contains($0) && $0 != current }.sorted()
 }
+
+// MARK: - Underlay while analysing
+// A video plays only once Analysis has screened it for flashing, which on a first launch takes a few seconds. A still
+// frame can't flash, so meanwhile the window shows a Poster or the desktop picture, never black.
+
+/// Where the window's Poster underlay can come from at launch.
+enum UnderlaySource: Equatable {
+    /// A saved Poster in the app's Poster folder, by file name.
+    case poster(String)
+    /// The system desktop picture: the user's own picture on a first install, or the Poster an earlier version set.
+    case desktopPicture
+}
+
+/// The underlay sources to try at launch, best first; the caller shows the first one that loads. `toPlay` is the
+/// Poster name of the video that will play, `waiting` those of the other settled videos that aren't Excluded
+/// (analysed or not) newest first, and `saved` the file names in the Poster folder. Their saved Posters come first,
+/// then the desktop picture, then any other saved Poster as a last resort.
+func underlayCandidates(toPlay: String?, waiting: [String], saved: [String]) -> [UnderlaySource] {
+    let savedPosters = Set(saved.filter(isPosterFileName))
+    var seen: Set<String> = []
+    let own = ([toPlay].compactMap { $0 } + waiting).filter { savedPosters.contains($0) && seen.insert($0).inserted }
+    let others = savedPosters.subtracting(own).sorted()
+    return own.map(UnderlaySource.poster) + [.desktopPicture] + others.map(UnderlaySource.poster)
+}

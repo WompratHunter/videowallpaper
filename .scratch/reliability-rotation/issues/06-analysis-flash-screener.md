@@ -38,7 +38,7 @@
   - `self?.library.isPowerSaving = isOn` in `powerStateChanged`.
 - Also: `AppFiles.analysisCacheFile` (one line in `DesktopPictures.swift`); `Tests/main.swift` registers `runAnalysisCacheTests()`; `Makefile` gains `smoke`.
 - Deviations and interpretations:
-  - An unanalysed video is not eligible, since it hasn't been screened. On the first launch after install the cache is empty, so the newest video plays only after its Analysis (a few seconds; Analysis goes newest first). Until then the windows have no Poster and show black, once. In Low Power Mode with an empty cache nothing plays until it ends.
+  - An unanalysed video is not eligible, since it hasn't been screened. On the first launch after install the cache is empty, so the newest video plays only after its Analysis (a few seconds; Analysis goes newest first). Until then the underlay is a still (Core `underlayCandidates`): the saved Poster of the video to play or of another non-Excluded video, else the current desktop picture, else any saved Poster; never black (fixed in review, see below). In Low Power Mode with an empty cache that still shows until Low Power Mode ends.
   - The Poster file name now includes the frame choice (golden value in `PosterFilesTests` updated), so analysed Posters get new URLs. macOS would otherwise keep showing its cached 5 s frame as the desktop picture.
   - A Poster is saved for Excluded videos too, so an override plays with a Poster at once.
   - The flash rate is transitions / 2 as a fraction (changed after review), so a 3.5 Hz strobe is Excluded. A `FlashOverride` edit is read whenever the app decides, but nothing re-decides until the next folder change or Analysis.
@@ -54,7 +54,7 @@
   - The queue's small bookkeeping (pending/running/failed) stays in App. Its decision, the order, is the Core `videosToAnalyse`.
   - `Analysis` repeats `FrameMeasurement`'s fields rather than nesting it, to keep the cache JSON flat.
   - The decode loop blocks one cooperative thread for a few seconds, one at a time. A Task is kept for cancellation.
-  - First-launch black until the first Analysis (see above).
+  - First-launch black until the first Analysis: REJECTED in the second review (never black is the core promise); fixed with the launch underlay above.
 - Manual checks after `make install`:
   - The log shows four `analysis video=…` lines on first launch with values close to those above, then `analysis eligible videos=4`. Next launch shows no `analysis` lines, because the cache is used.
   - `~/Library/Application Support/VideoWallpaper/analysis-cache.json` exists with 4 entries. `posters/` holds 4 new-named Posters, and the old ones are gone after the first Poster is shown.
