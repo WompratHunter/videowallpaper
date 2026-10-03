@@ -33,6 +33,13 @@ func settledVideos(earlier: [String: VideoFile], later: [String: VideoFile]) -> 
     later.filter { name, file in file.size > 0 && earlier[name]?.size == file.size }.mapValues(\.modified)
 }
 
+struct SettleOutcome: Equatable {
+    /// The settled set changed: the player must re-decide what to show.
+    let isReadyChanged: Bool
+    /// Some file is still in flux: schedule another check after `checkInterval`.
+    let needsAnotherCheck: Bool
+}
+
 struct FolderSettler {
     static let checkInterval: TimeInterval = 3
 
@@ -41,8 +48,11 @@ struct FolderSettler {
     /// The snapshot the next scheduled check compares against; nil when no check is pending.
     private var baseline: [String: VideoFile]?
 
+    /// Videos present at launch play at once rather than after a settle delay; the launch snapshot is also the
+    /// baseline of a first check, so a file still being copied at launch is dropped when that check finds it grew.
     init(trusting snapshot: [String: VideoFile]) {
         ready = snapshot.mapValues(\.modified)
+        baseline = snapshot
     }
 
     /// A folder event. Returns true when the caller should schedule `check` after `checkInterval`.
@@ -52,9 +62,10 @@ struct FolderSettler {
         return true
     }
 
-    /// The scheduled check. Updates `ready` and returns true when another check is needed.
-    mutating func check(_ snapshot: [String: VideoFile]) -> Bool {
+    /// The scheduled check: updates `ready` and says whether the player must hear about it.
+    mutating func check(_ snapshot: [String: VideoFile]) -> SettleOutcome {
         let earlier = baseline ?? [:]
+        let before = ready
         ready = settledVideos(earlier: earlier, later: snapshot)
         // A stable empty file (a placeholder that never grows) is not loaded, but not polled forever either:
         // a later folder event starts a new check.
@@ -62,7 +73,7 @@ struct FolderSettler {
             ready[name] == nil && !(file.size == 0 && earlier[name]?.size == 0)
         }
         baseline = inFlux ? snapshot : nil
-        return inFlux
+        return SettleOutcome(isReadyChanged: ready != before, needsAnotherCheck: inFlux)
     }
 }
 
@@ -76,7 +87,7 @@ enum FolderChangeAction: Equatable {
     case rebuildNow(RecoveryCause)
     case restNoVideo
     /// Low Power Mode: no player is built; leaving it re-picks the newest video.
-    case waitForPower
+    case holdForPower
 }
 
 /// What to do when the folder's set of settled videos changes. `isRecovering` covers a pending rebuild and any rest on
@@ -84,7 +95,7 @@ enum FolderChangeAction: Equatable {
 func folderChangeAction(
     newest: URL?, current: URL?, currentExists: Bool, isRecovering: Bool, isPowerSaving: Bool
 ) -> FolderChangeAction {
-    if isPowerSaving { return .waitForPower }
+    if isPowerSaving { return .holdForPower }
     guard let newest else { return .restNoVideo }
     if current != nil && !currentExists { return .rebuildNow(.fileMissing) }
     if isRecovering { return .rebuildNow(.videoAvailable) }

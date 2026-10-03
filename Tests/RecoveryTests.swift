@@ -146,8 +146,19 @@ private func runBackoffTests() {
     for event in [RecoveryBackoff.ResetEvent.wake, .unlock, .folderChange] {
         var used = RecoveryBackoff()
         for _ in 0..<4 { _ = used.nextDelay() }
-        used.reset(on: event)
+        check(used.reset(on: event, isPowerSaving: false), "a rest ends with a retry on \(event)")
         check(!used.isResting, "not resting after reset on \(event)")
         checkEqual(used.nextDelay(), 10)
     }
+
+    // Nothing to retry when not resting.
+    var fresh = RecoveryBackoff()
+    _ = fresh.nextDelay()
+    check(!fresh.reset(on: .wake, isPowerSaving: false), "a pending retry is not doubled")
+
+    // In Low Power Mode the count still resets, but no retry runs: leaving Low Power Mode rebuilds instead.
+    var lowPower = RecoveryBackoff()
+    for _ in 0..<4 { _ = lowPower.nextDelay() }
+    check(!lowPower.reset(on: .unlock, isPowerSaving: true), "no retry in Low Power Mode")
+    check(!lowPower.isResting, "the count resets in Low Power Mode too")
 }

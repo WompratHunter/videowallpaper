@@ -109,14 +109,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows = NSScreen.screens.map { WallpaperWindow(screen: $0, player: player) }
         // orderFront, not makeKeyAndOrderFront: a desktop window must never take keyboard focus.
         windows.forEach { $0.orderFront(nil) }
-        applyOcclusion()
+        applyOcclusion(change: "windows=\(windows.count)")
     }
 
     /// Pauses only when every display's window is covered by opaque windows. Translucent ones (e.g. Ghostty)
     /// leave the window's occlusion state visible, so the video keeps playing behind them.
-    private func applyOcclusion() {
-        let visibility = windows.map { $0.occlusionState.contains(.visible) }
-        player.apply(.allWindowsOccluded(areAllWindowsOccluded(visibility: visibility)))
+    private func applyOcclusion(change: String) {
+        let isAllOccluded = isEveryWindowOccluded(visibility: windows.map { $0.occlusionState.contains(.visible) })
+        Log.write("occlusion", "\(change) all-occluded=\(isAllOccluded ? "yes" : "no")")
+        player.apply(.allWindowsOccluded(isAllOccluded))
     }
 
     /// The last exported Poster, so the underlay isn't empty while the new one is generated at launch.
@@ -181,11 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func occlusionChanged(_ note: Notification) {
         guard let window = note.object as? WallpaperWindow, let index = windows.firstIndex(of: window) else { return }
-        let isVisible = window.occlusionState.contains(.visible)
-        let isAllOccluded = areAllWindowsOccluded(visibility: windows.map { $0.occlusionState.contains(.visible) })
-        Log.write("occlusion", "screen=\(index) visible=\(isVisible ? "yes" : "no") "
-            + "all-occluded=\(isAllOccluded ? "yes" : "no")")
-        applyOcclusion()
+        applyOcclusion(change: "screen=\(index) visible=\(window.occlusionState.contains(.visible) ? "yes" : "no")")
     }
 
     /// Posted on an arbitrary queue; the player is main-thread only.
@@ -217,13 +214,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate {
     private func startFolderWatch() {
         try? FileManager.default.createDirectory(at: wallpaperDir, withIntermediateDirectories: true)
+        // Seeded before the watch so videos still play if it can't be opened; the launch snapshot is the first
+        // check's baseline, which catches a copy still running at launch.
+        settler = FolderSettler(trusting: videoSnapshot(of: wallpaperDir))
+        scheduleSettleCheck()
         let fd = open(wallpaperDir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else {
+            Log.write("launch", "cannot watch \(wallpaperDir.path): folder changes will not be seen")
+            return
+        }
         let src = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: [.write, .rename, .delete],
             queue: .main)
-        settler = FolderSettler(trusting: videoSnapshot(of: wallpaperDir))
         src.setEventHandler { [weak self] in self?.folderChanged() }
         src.setCancelHandler { close(fd) }
         src.resume()
@@ -243,9 +246,9 @@ extension AppDelegate {
 
     /// Only settled videos reach the player, so a file still being copied is never loaded.
     private func settleCheck() {
-        let before = settler.ready
-        if settler.check(videoSnapshot(of: wallpaperDir)) { scheduleSettleCheck() }
-        guard settler.ready != before else { return }
+        let outcome = settler.check(videoSnapshot(of: wallpaperDir))
+        if outcome.needsAnotherCheck { scheduleSettleCheck() }
+        guard outcome.isReadyChanged else { return }
         Log.write("folder-change", "settled videos=\(settler.ready.count)")
         // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), because
         // AVFoundation may otherwise keep playing the old open file.

@@ -14,7 +14,8 @@ enum PlaybackGateAction: Equatable {
     case none
     case pause
     case resume
-    /// Drop the player so only the Poster shows (Low Power Mode).
+    /// Drop the player so only the Poster shows (Low Power Mode), along with any pending Recovery rebuild:
+    /// the `rebuild` on leaving Low Power Mode replaces it. Only an exhausted backoff survives (`isRecoveryResting`).
     case tearDown
     /// Build a player again after a tear-down; it plays only if the gate's mode is `playing`.
     case rebuild
@@ -62,6 +63,6 @@ struct PlaybackGate {
 
 /// Each window's "visible" occlusion flag. Translucent windows (e.g. Ghostty) don't clear the flag, so only
 /// opaque coverage of every display counts. No windows at all is not "covered".
-func areAllWindowsOccluded(visibility: [Bool]) -> Bool {
+func isEveryWindowOccluded(visibility: [Bool]) -> Bool {
     !visibility.isEmpty && !visibility.contains(true)
 }

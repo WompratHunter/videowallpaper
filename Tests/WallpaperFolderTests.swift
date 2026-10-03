@@ -55,9 +55,9 @@ private func runFolderChangeActionTests() {
     checkEqual(action(newest: sea, current: rain, exists: true, recovering: true), .rebuildNow(.videoAvailable))
 
     // In Low Power Mode nothing is built; leaving it re-picks the newest video.
-    checkEqual(action(newest: sea, current: rain, exists: true, powerSaving: true), .waitForPower)
-    checkEqual(action(newest: sea, current: rain, exists: false, powerSaving: true), .waitForPower)
-    checkEqual(action(newest: nil, current: rain, exists: false, powerSaving: true), .waitForPower)
+    checkEqual(action(newest: sea, current: rain, exists: true, powerSaving: true), .holdForPower)
+    checkEqual(action(newest: sea, current: rain, exists: false, powerSaving: true), .holdForPower)
+    checkEqual(action(newest: nil, current: rain, exists: false, powerSaving: true), .holdForPower)
 }
 
 private func file(_ size: Int64, _ seconds: TimeInterval = 0) -> VideoFile {
@@ -72,32 +72,46 @@ private func runSettleTests() {
     checkEqual(settled["done.mp4"], Date(timeIntervalSince1970: 0))
 }
 
+private func outcome(changed: Bool, again: Bool) -> SettleOutcome {
+    SettleOutcome(isReadyChanged: changed, needsAnotherCheck: again)
+}
+
 private func runFolderSettlerTests() {
-    // Videos already present at launch are trusted, so playback starts without a settle delay.
-    var settler = FolderSettler(trusting: ["rain.mp4": file(500)])
+    // Videos present at launch play at once; the launch snapshot is the first check's baseline.
+    var settler = FolderSettler(trusting: ["rain.mp4": file(500), "half.mp4": file(100)])
+    checkEqual(Set(settler.ready.keys), ["half.mp4", "rain.mp4"])
+    check(!settler.noteEvent(["rain.mp4": file(500)]), "the launch check is already pending")
+    // A copy that was still running at launch is dropped by that first check.
+    checkEqual(settler.check(["rain.mp4": file(500), "half.mp4": file(200)]), outcome(changed: true, again: true))
     checkEqual(Set(settler.ready.keys), ["rain.mp4"])
+    checkEqual(settler.check(["rain.mp4": file(500), "half.mp4": file(200)]), outcome(changed: true, again: false))
+    checkEqual(Set(settler.ready.keys), ["half.mp4", "rain.mp4"])
 
     // A copy starts: the first event schedules a check; more events while it is pending don't.
     check(settler.noteEvent(["rain.mp4": file(500), "sea.mp4": file(10)]), "first event schedules a check")
     check(!settler.noteEvent(["rain.mp4": file(500), "sea.mp4": file(20)]), "pending check is not rescheduled")
 
     // Still growing 3 s later: not loaded, check again.
-    check(settler.check(["rain.mp4": file(500), "sea.mp4": file(40)]), "a growing file needs another check")
+    checkEqual(settler.check(["rain.mp4": file(500), "sea.mp4": file(40)]), outcome(changed: true, again: true))
     checkEqual(Set(settler.ready.keys), ["rain.mp4"])
 
     // Unchanged across two checks: settled and loadable; nothing left to watch.
-    check(!settler.check(["rain.mp4": file(500), "sea.mp4": file(40, 3)]), "all settled: no more checks")
+    checkEqual(settler.check(["rain.mp4": file(500), "sea.mp4": file(40, 3)]), outcome(changed: true, again: false))
     checkEqual(Set(settler.ready.keys), ["rain.mp4", "sea.mp4"])
     checkEqual(settler.ready["sea.mp4"], Date(timeIntervalSince1970: 3))
 
+    // An event that changes nothing (e.g. the Poster export) does not disturb the player.
+    check(settler.noteEvent(["rain.mp4": file(500), "sea.mp4": file(40, 3)]), "event schedules a check")
+    checkEqual(settler.check(["rain.mp4": file(500), "sea.mp4": file(40, 3)]), outcome(changed: false, again: false))
+
     // A deletion drops the file once checked.
     check(settler.noteEvent(["sea.mp4": file(40, 3)]), "deletion schedules a check")
-    check(!settler.check(["sea.mp4": file(40, 3)]), "deletion needs no further check")
+    checkEqual(settler.check(["sea.mp4": file(40, 3)]), outcome(changed: true, again: false))
     checkEqual(Set(settler.ready.keys), ["sea.mp4"])
 
     // An empty placeholder that never grows is neither loaded nor polled forever.
     check(settler.noteEvent(["sea.mp4": file(40, 3)]), "an event schedules a check")
-    check(settler.check(["sea.mp4": file(40, 3), "stub.mp4": file(0)]), "a file seen once needs a second look")
-    check(!settler.check(["sea.mp4": file(40, 3), "stub.mp4": file(0)]), "a stable empty file is not polled")
+    checkEqual(settler.check(["sea.mp4": file(40, 3), "stub.mp4": file(0)]), outcome(changed: false, again: true))
+    checkEqual(settler.check(["sea.mp4": file(40, 3), "stub.mp4": file(0)]), outcome(changed: false, again: false))
     checkEqual(Set(settler.ready.keys), ["sea.mp4"])
 }

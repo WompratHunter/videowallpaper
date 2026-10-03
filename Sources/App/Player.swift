@@ -72,15 +72,15 @@ final class Player {
         if changed { onVideoChange(url) }
     }
 
-    /// Plays the newest video at launch, unless Low Power Mode holds the Live wallpaper on the Poster.
+    /// Goes through the rebuild plan so launching in Low Power Mode, or with no video, holds on the Poster.
     func start() {
         runRebuildPlan(verb: "playing", cause: "launch")
     }
 
     func resetBackoff(on event: RecoveryBackoff.ResetEvent) {
-        let wasResting = backoff.isResting
-        backoff.reset(on: event)
-        if wasResting { recover(cause: .retryAfterRest, detail: "on \(event.rawValue)") }
+        if backoff.reset(on: event, isPowerSaving: gate.isPowerSaving) {
+            recover(cause: .retryAfterRest, detail: "on \(event.rawValue)")
+        }
     }
 
     // MARK: - Health
@@ -93,9 +93,8 @@ final class Player {
             now: now, playbackSeconds: seconds, isIntendingToPlay: shouldBePlaying, hasFailed: hasFailed)
         if let cause = monitor.tick(sample) {
             recover(cause: cause, detail: stateReport(sinceSeconds: nil).description)
-        } else if gate.isIntendingToPlay, pendingSeek == nil, let seconds {
-            // Not while a resume seek is pending: currentTime() is still 0 and would lose the saved position.
-            savedSeconds = seconds
+        } else if gate.isIntendingToPlay {
+            savePosition()
         }
     }
 
@@ -153,7 +152,7 @@ extension Player {
     func folderChanged(newest: URL?) {
         // Read before the reset: a rest after an exhausted backoff is still Recovery and must be retried now.
         let wasRecovering = isRecovering
-        backoff.reset(on: .folderChange)
+        backoff.reset(on: .folderChange, isPowerSaving: gate.isPowerSaving)
         let currentExists = video.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let action = folderChangeAction(
             newest: newest, current: video, currentExists: currentExists, isRecovering: wasRecovering,
@@ -170,7 +169,7 @@ extension Player {
             scheduleRebuild(after: 0)
         case .restNoVideo:
             restWithoutVideo(detail: "on folder-change")
-        case .waitForPower:
+        case .holdForPower:
             Log.write("folder-change", "Low Power Mode: the newest video loads when it ends")
         }
     }

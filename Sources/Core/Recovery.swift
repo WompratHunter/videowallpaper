@@ -116,7 +116,12 @@ struct RecoveryBackoff {
         return isResting ? nil : Self.delays[attempts - 1]
     }
 
-    mutating func reset(on event: ResetEvent) {
+    /// Returns true when a rest on the Poster should end with a retry now. Not in Low Power Mode: no player is
+    /// built there, so a retry would only spend an attempt; leaving Low Power Mode rebuilds anyway.
+    @discardableResult
+    mutating func reset(on event: ResetEvent, isPowerSaving: Bool) -> Bool {
+        let wasResting = isResting
         attempts = 0
+        return wasResting && !isPowerSaving
     }
 }

@@ -94,7 +94,7 @@ private func runGateRecoveryIntentTests() {
 }
 
 private func runOcclusionTests() {
-    check(areAllWindowsOccluded(visibility: [false, false, false]), "every window covered")
-    check(!areAllWindowsOccluded(visibility: [false, true, false]), "one visible display keeps playing")
-    check(!areAllWindowsOccluded(visibility: []), "no windows is not occluded")
+    check(isEveryWindowOccluded(visibility: [false, false, false]), "every window covered")
+    check(!isEveryWindowOccluded(visibility: [false, true, false]), "one visible display keeps playing")
+    check(!isEveryWindowOccluded(visibility: []), "no windows is not occluded")
 }
