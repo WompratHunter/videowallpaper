@@ -40,7 +40,7 @@ Then drop a `.mp4` into `~/Movies/LiveWallpaper/`.
 | `~/Applications/VideoWallpaper.app` | The app |
 | `~/Library/LaunchAgents/com.videowallpaper.plist` | Starts the app at login and restarts it if it quits |
 | `~/Library/Application Support/VideoWallpaper/posters/` | One Poster (still frame) per video, named from the video's path, size and modification date; Posters of deleted videos are pruned |
-| `~/Library/Application Support/VideoWallpaper/original-desktop-pictures.json` | Your desktop picture per display, recorded the first time the app replaces it and never overwritten |
+| `~/Library/Application Support/VideoWallpaper/original-desktop-pictures.json` | Your desktop picture per display, recorded at first launch (and for a newly connected display, before its first Poster) and never overwritten |
 | `com.evanscott.videowallpaper` defaults domain | The app's preferences |
 | `~/Library/Logs/videowallpaper.log` | The log |
 

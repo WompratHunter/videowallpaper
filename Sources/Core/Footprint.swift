@@ -73,8 +73,11 @@ struct OriginalPictures: Codable, Equatable {
     func json() -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        // Encoding plain strings, numbers and arrays cannot fail.
-        return (try? encoder.encode(self)) ?? Data()
+        do {
+            return try encoder.encode(self)
+        } catch {
+            fatalError("encoding plain strings, numbers and arrays cannot fail: \(error)")
+        }
     }
 }
 
@@ -82,7 +85,7 @@ struct OriginalPictures: Codable, Equatable {
 /// overwritten, so later runs (when the screens show the Poster) keep the true original. A screen not yet recorded
 /// is added unless it already shows our Poster, because then its original is unknown.
 func originalsToRecord(
-    existing: OriginalPictures?, current: [String: DesktopPicture], own: OwnPictures
+    existing: OriginalPictures?, current: [String: DesktopPicture], ownPictures own: OwnPictures
 ) -> OriginalPictures? {
     var record = existing ?? OriginalPictures(screens: [:])
     for (screen, picture) in current where record.screens[screen] == nil && !own.contains(picture.path) {
@@ -98,7 +101,7 @@ func originalsToRecord(
 func restorePlan(
     originals: OriginalPictures?,
     current: [String: DesktopPicture],
-    own: OwnPictures,
+    ownPictures own: OwnPictures,
     fallback: DesktopPicture?,
     fileExists: (String) -> Bool
 ) -> [String: DesktopPicture] {

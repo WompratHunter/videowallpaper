@@ -14,7 +14,9 @@ enum AppFiles {
     static let legacyPoster = wallpaperDirectory.appendingPathComponent(".poster.jpg")
     static let defaultDesktopPicture = URL(fileURLWithPath: "/System/Library/CoreServices/DefaultDesktop.heic")
 
-    static let own = OwnPictures(posterDirectory: posterDirectory.path, legacyPoster: legacyPoster.path)
+    static let ownPictures = OwnPictures(
+        posterDirectory: posterDirectory.resolvingSymlinksInPath().path,
+        legacyPoster: legacyPoster.resolvingSymlinksInPath().path)
 }
 
 // MARK: - Desktop pictures per screen
@@ -22,12 +24,14 @@ enum AppFiles {
 
 enum DesktopPictures {
     /// The current picture of every connected screen, keyed by a stable screen identifier.
-    static func current() -> [String: DesktopPicture] {
+    private static func current() -> [String: DesktopPicture] {
         var pictures: [String: DesktopPicture] = [:]
         for screen in NSScreen.screens {
             guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { continue }
+            // Resolved like the app's own paths, so a symlinked home still matches its Posters.
+            let raw = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
             pictures[key(for: screen)] = DesktopPicture(
-                path: url.path, options: options(from: NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]))
+                path: url.resolvingSymlinksInPath().path, options: options(from: raw))
         }
         return pictures
     }
@@ -46,8 +50,11 @@ enum DesktopPictures {
 
     /// Saves the user's own pictures before this app first replaces them; earlier records are never overwritten.
     static func recordOriginals() {
-        let existing = (try? Data(contentsOf: AppFiles.originalsFile)).flatMap(OriginalPictures.init(json:))
-        guard let record = originalsToRecord(existing: existing, current: current(), own: AppFiles.own) else { return }
+        let existing = loadOriginals()
+        // An unreadable record is kept as it is: rewriting it could replace the true originals with our Poster.
+        if existing == nil && FileManager.default.fileExists(atPath: AppFiles.originalsFile.path) { return }
+        guard let record = originalsToRecord(existing: existing, current: current(), ownPictures: AppFiles.ownPictures)
+        else { return }
         do {
             try FileManager.default.createDirectory(at: AppFiles.supportDirectory, withIntermediateDirectories: true)
             try record.json().write(to: AppFiles.originalsFile, options: .atomic)
@@ -60,9 +67,11 @@ enum DesktopPictures {
     /// The `--restore-wallpaper` command: puts back the original picture on every screen showing our Poster.
     /// Returns the process exit status.
     static func restoreOriginals() -> Int32 {
-        let originals = (try? Data(contentsOf: AppFiles.originalsFile)).flatMap(OriginalPictures.init(json:))
+        let originals = loadOriginals()
         let fallback = DesktopPicture(path: AppFiles.defaultDesktopPicture.path, options: DesktopPictureOptions())
-        let plan = restorePlan(originals: originals, current: current(), own: AppFiles.own, fallback: fallback) {
+        let plan = restorePlan(
+            originals: originals, current: current(), ownPictures: AppFiles.ownPictures, fallback: fallback
+        ) {
             FileManager.default.fileExists(atPath: $0)
         }
         var status: Int32 = 0
@@ -79,6 +88,16 @@ enum DesktopPictures {
         }
         if plan.isEmpty { Log.write("restore", "no screen shows a Poster; nothing to restore") }
         return status
+    }
+
+    /// The recorded originals; nil when none were recorded, or (logged) when the record can't be read.
+    private static func loadOriginals() -> OriginalPictures? {
+        guard let data = try? Data(contentsOf: AppFiles.originalsFile) else { return nil }
+        guard let originals = OriginalPictures(json: data) else {
+            Log.write("desktop-picture", "cannot read \(AppFiles.originalsFile.path)")
+            return nil
+        }
+        return originals
     }
 
     /// The display's UUID survives reboots and reconnection, unlike the numeric display ID.

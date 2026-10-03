@@ -60,30 +60,30 @@ private func runOwnPictureTests() {
 
 private func runRecordOriginalsTests() {
     // First run: every screen's picture is recorded.
-    let first = originalsToRecord(existing: nil, current: ["A": beach, "B": city], own: own)
+    let first = originalsToRecord(existing: nil, current: ["A": beach, "B": city], ownPictures: own)
     checkEqual(first, OriginalPictures(screens: ["A": beach, "B": city]))
 
     // Later runs never overwrite: the screens now show the Poster, and a changed picture is not recorded either.
     let recorded = OriginalPictures(screens: ["A": beach, "B": city])
-    checkEqual(originalsToRecord(existing: recorded, current: ["A": poster, "B": poster], own: own), nil)
-    checkEqual(originalsToRecord(existing: recorded, current: ["A": city, "B": beach], own: own), nil)
+    checkEqual(originalsToRecord(existing: recorded, current: ["A": poster, "B": poster], ownPictures: own), nil)
+    checkEqual(originalsToRecord(existing: recorded, current: ["A": city, "B": beach], ownPictures: own), nil)
 
     // A display connected later is added, keeping the existing entries.
     checkEqual(
-        originalsToRecord(existing: recorded, current: ["A": poster, "C": city], own: own),
+        originalsToRecord(existing: recorded, current: ["A": poster, "C": city], ownPictures: own),
         OriginalPictures(screens: ["A": beach, "B": city, "C": city]))
 
     // A screen already showing our Poster (an install from before originals were recorded) has no known original.
-    checkEqual(originalsToRecord(existing: nil, current: ["A": legacy, "B": beach], own: own),
+    checkEqual(originalsToRecord(existing: nil, current: ["A": legacy, "B": beach], ownPictures: own),
                OriginalPictures(screens: ["B": beach]))
-    checkEqual(originalsToRecord(existing: nil, current: ["A": legacy], own: own), nil)
-    checkEqual(originalsToRecord(existing: nil, current: [:], own: own), nil)
+    checkEqual(originalsToRecord(existing: nil, current: ["A": legacy], ownPictures: own), nil)
+    checkEqual(originalsToRecord(existing: nil, current: [:], ownPictures: own), nil)
 }
 
 private func plan(
     _ originals: OriginalPictures?, _ current: [String: DesktopPicture], missing: Set<String> = []
 ) -> [String: DesktopPicture] {
-    restorePlan(originals: originals, current: current, own: own, fallback: fallback) { !missing.contains($0) }
+    restorePlan(originals: originals, current: current, ownPictures: own, fallback: fallback) { !missing.contains($0) }
 }
 
 private func runRestorePlanTests() {
@@ -105,7 +105,7 @@ private func runRestorePlanTests() {
     // An original that was deleted since cannot be restored: another screen's original, else the default picture.
     checkEqual(plan(recorded, ["A": poster], missing: [beach.path]), ["A": city])
     checkEqual(plan(recorded, ["A": poster], missing: [beach.path, city.path]), ["A": fallback])
-    checkEqual(restorePlan(originals: nil, current: ["A": poster], own: own, fallback: nil) { _ in true }, [:])
+    checkEqual(restorePlan(originals: nil, current: ["A": poster], ownPictures: own, fallback: nil) { _ in true }, [:])
     checkEqual(plan(nil, ["A": poster], missing: [fallback.path]), [:])
 
     // Nothing of ours on screen: nothing to do.

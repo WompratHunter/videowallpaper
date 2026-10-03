@@ -71,6 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("launch", "pid=\(ProcessInfo.processInfo.processIdentifier) screens=\(NSScreen.screens.count)")
         player.videoProvider = { [weak self] in self?.newestSettledVideo() }
         player.onVideoChange = { [weak self] url in self?.showPoster(for: url) }
+        // Recorded before anything can change the desktop picture; screens connected later are recorded before the
+        // next Poster is set.
+        DesktopPictures.recordOriginals()
         removeLegacyPoster()
         // Settled videos are known before the first pick and its saved Poster; Low Power Mode is known before any
         // player is built.
@@ -310,8 +313,9 @@ extension AppDelegate {
 
     /// Posters of videos no longer in the folder are deleted, so Application Support doesn't grow forever.
     private func pruneStalePosters() {
-        let keep = Set(videoSnapshot(of: wallpaperDir).map { name, file in
-            posterFileName(forVideoAt: wallpaperDir.appendingPathComponent(name).path, file: file)
+        // Named by posterURL(for:), like the Poster just saved, so a fresh Poster is never pruned.
+        let keep = Set(videoSnapshot(of: wallpaperDir).keys.compactMap {
+            posterURL(for: wallpaperDir.appendingPathComponent($0))?.lastPathComponent
         })
         let names = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
         for name in stalePosters(in: names, keeping: keep) {

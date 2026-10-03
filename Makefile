@@ -42,6 +42,8 @@ uninstall:
 	@launchctl unload $(PLIST_DST) 2>/dev/null || true
 	@if [ -x $(BINARY) ]; then \
 		$(BINARY) --restore-wallpaper || echo "! Could not restore every desktop picture; set it in System Settings"; \
+	else \
+		echo "! App not found, desktop picture not restored; set it in System Settings"; \
 	fi
 	@rm -rf $(APP) $(PLIST_DST) "$(SUPPORT)"
 	@rm -f $(VIDEO_DIR)/.poster.jpg
