@@ -5,3 +5,7 @@ videowallpaper
 
 # macOS
 .DS_Store
+
+# local test build / agent worktrees
+.build/
+.claude/worktrees/
