@@ -4,14 +4,14 @@
 
 **Blocked by:** 05
 
-**Status:** done (manual checks pending install)
+**Status:** done
 
 - [x] Player interface accepts a fade duration; zero means cut
 - [x] Incoming layer waits for ready-for-display; no black or Poster flash between videos
 - [x] Outgoing player released after the fade (verify single decoder via CPU/logs; CPU check is manual, below)
 - [x] A fade interrupted by Recovery, Low Power Mode or occlusion pause ends in a sane state (tests for any pure state logic; manual check otherwise)
-- [ ] Manual check: drop a second video in → 5 s crossfade on all displays
-- [ ] `make build` green; rebase on main before review; `make install` after merge (build green and rebased; install pending merge)
+- [x] Manual check: drop a second video in → 5 s crossfade on all displays (loading, then fading over 5s, then done in 5.1 s; removing it gave a file-missing Recovery in 0 s)
+- [x] `make build` green; rebased; installed e8a2b24
 
 ## Comments
 
