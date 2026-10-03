@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         library.onChange = { [weak self] video in self?.player.folderChanged(newest: video) }
         windows.onOcclusionChange = { [weak self] isAllOccluded in
             self?.player.apply(.allWindowsOccluded(isAllOccluded))
+            self?.visibility.apply(.everyWindowOccluded(isAllOccluded), cause: "occlusion")
         }
     }
 
@@ -77,10 +78,17 @@ extension AppDelegate {
         workspace.addObserver(
             self, selector: #selector(sessionActive),
             name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        workspace.addObserver(
+            self, selector: #selector(sessionInactive),
+            name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         // Unlock has no public NSWorkspace notification; this distributed one is what the system posts.
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(screenUnlocked),
             name: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil)
+        // Lock is expected to occlude every window too; this keeps Unseen correct if it doesn't.
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(screenLocked),
+            name: NSNotification.Name("com.apple.screenIsLocked"), object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -92,12 +100,14 @@ extension AppDelegate {
     @objc private func screensSleep() {
         Log.write("screens-sleep", "pausing shared player")
         player.apply(.screensAsleep(true))
+        visibility.apply(.screensAsleep(true), cause: "screens-sleep")
     }
 
     @objc private func screensWake() {
         windows.reassert()
         player.resetBackoff(on: .wake)
         player.apply(.screensAsleep(false))
+        visibility.apply(.screensAsleep(false), cause: "screens-wake")
         player.verifyPlayback(cause: "screens-wake")
     }
 
@@ -115,9 +125,17 @@ extension AppDelegate {
         player.verifyPlayback(cause: "wake")
     }
 
-    @objc private func sessionActive() { player.verifyPlayback(cause: "session-active") }
+    @objc private func sessionActive() {
+        visibility.apply(.sessionInactive(false), cause: "session-active")
+        player.verifyPlayback(cause: "session-active")
+    }
+
+    @objc private func sessionInactive() { visibility.apply(.sessionInactive(true), cause: "session-inactive") }
+
+    @objc private func screenLocked() { visibility.apply(.locked(true), cause: "lock") }
 
     @objc private func screenUnlocked() {
+        visibility.apply(.locked(false), cause: "unlock")
         player.resetBackoff(on: .unlock)
         player.verifyPlayback(cause: "unlock")
     }
@@ -132,6 +150,7 @@ let app = NSApplication.shared
 if CommandLine.arguments.contains("--restore-wallpaper") {
     exit(DesktopPictures.restoreOriginals())
 }
+if CommandLine.arguments.contains("--check-veil") { Visibility.runVeilProbe() }
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
 app.delegate = delegate
