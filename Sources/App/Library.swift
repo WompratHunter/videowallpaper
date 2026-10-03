@@ -85,18 +85,18 @@ extension Library {
     private func logVerdicts() {
         let overrides = flashOverrides()
         let present = Self.videoSnapshot(of: directory)
+        var rates: [String: Double] = [:]
         var verdicts: [String: FlashVerdict] = [:]
         for (name, file) in present {
-            guard let analysis = analyses.analysis(of: directory.appendingPathComponent(name), file: file)
+            guard let rate = analyses.analysis(of: directory.appendingPathComponent(name), file: file)?.flashesPerSecond
             else { continue }
-            let rate = analysis.flashesPerSecond
-            let verdict = flashVerdict(flashesPerSecond: rate, fileName: name, overrides: overrides)
-            guard verdict != .eligible else { continue }
-            verdicts[name] = verdict
-            guard loggedVerdicts[name] != verdict else { continue }
-            let limit = FlashVerdict.limitPerSecond
-            Log.write("flash", verdict == .excluded
-                ? "excluded video=\(name) flashes=\(rate)/s (limit \(limit)/s)"
+            rates[name] = rate
+            verdicts[name] = flashVerdict(flashesPerSecond: rate, fileName: name, overrides: overrides)
+        }
+        for name in verdictsToLog(previous: loggedVerdicts, current: verdicts) {
+            let rate = String(format: "%.1f", rates[name] ?? 0)
+            Log.write("flash", verdicts[name] == .excluded
+                ? "excluded video=\(name) flashes=\(rate)/s (limit \(Int(FlashVerdict.limitPerSecond))/s)"
                 : "override video=\(name) flashes=\(rate)/s plays (in FlashOverride)")
         }
         loggedVerdicts = verdicts

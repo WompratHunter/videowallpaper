@@ -49,13 +49,13 @@ Versions before this one wrote a hidden `.poster.jpg` into the video folder; the
 
 ## Analysis and the flash screener
 
-Each video is analysed once, in the background at low priority, one at a time; none starts in Low Power Mode (a new video waits until it ends). Analysis decodes every frame at reduced resolution to measure the video's mean brightness (relative luminance) and its flash rate, and takes the Poster from the frame closest to the mean brightness, so the Lock screen doesn't show a dark intro frame. A 20 s 4K video takes a few seconds and under half a second of CPU. A video plays only once it has been analysed.
+Each video is analysed once, in the background at low priority, one at a time, and not in Low Power Mode (one in progress stops, and a new video waits until Low Power Mode ends). Analysis decodes every frame at reduced resolution to measure the video's mean brightness (relative luminance) and its flash rate, and takes the Poster from the frame closest to the mean brightness, so the Lock screen doesn't show a dark intro frame. A 20 s 4K video takes a few seconds and under half a second of CPU. A video plays only once it has been analysed.
 
 The flash check is an **approximate screener** modelled on the WCAG 2.3.1 general flash threshold, not a conformance assessment:
 
 - It looks at luminance only. There is **no red-flash test**, and no account of screen size or viewing distance.
 - A flash is a pair of opposing changes in relative luminance of at least 0.10 where the darker state is below 0.80. It counts the most flashes within any one second, over the full frame and over every 2×2 neighbourhood of a 12×12 grid (about 2.8% of the screen each).
-- A video with more than 3 flashes per second is **Excluded**: it doesn't play, and the log says so with its rate (`flash excluded video=… flashes=5/s`).
+- A video with more than 3 flashes per second (7 or more changes within a second) is **Excluded**: it doesn't play, and the log says so with its rate (`flash excluded video=… flashes=5.0/s`).
 
 It can miss content that a person with photosensitive epilepsy would react to, and can flag content that is fine. Don't rely on it to make video safe for someone at risk.
 

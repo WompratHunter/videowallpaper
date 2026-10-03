@@ -114,8 +114,9 @@ struct TransitionDetector {
 struct FrameMeasurement: Equatable {
     /// Mean relative luminance over every frame.
     let meanLuminance: Double
-    /// The most flashes in any 1 s window, in any region.
-    let flashesPerSecond: Int
+    /// The most flashes in any 1 s window, in any region: half the opposing transitions, so an unpaired transition
+    /// counts as half a flash and 7 transitions in a second (3.5) is over the limit, the conservative reading.
+    let flashesPerSecond: Double
     /// Where the Poster comes from: the frame closest to the mean luminance.
     let posterSeconds: Double
 }
@@ -147,7 +148,7 @@ struct FlashScreener {
         guard let poster = posterFrameIndex(luminances: frameLuminances) else { return nil }
         return FrameMeasurement(
             meanLuminance: frameLuminances.reduce(0, +) / Double(frameLuminances.count),
-            flashesPerSecond: mostTransitions / 2,
+            flashesPerSecond: Double(mostTransitions) / 2,
             posterSeconds: frameTimes[poster])
     }
 }
@@ -165,17 +166,23 @@ func posterFrameIndex(luminances: [Double]) -> Int? {
 // MARK: - Flash verdict
 
 enum FlashVerdict: Equatable {
-    case eligible
+    case withinLimit
     case excluded
     /// Over the limit but listed in `FlashOverride` by file name, so it plays.
     case overridden
 
-    static let limitPerSecond = 3
+    static let limitPerSecond = 3.0
 
     var isPlayable: Bool { self != .excluded }
 }
 
-func flashVerdict(flashesPerSecond: Int, fileName: String, overrides: [String]) -> FlashVerdict {
-    guard flashesPerSecond > FlashVerdict.limitPerSecond else { return .eligible }
+/// Logs once per change: the videos whose verdict differs from the last one logged. Only Excluded and overridden
+/// videos are tracked, so a video back within the limit (or deleted) drops out and is logged again if it returns.
+func verdictsToLog(previous: [String: FlashVerdict], current: [String: FlashVerdict]) -> [String] {
+    current.filter { $0.value != .withinLimit && previous[$0.key] != $0.value }.keys.sorted()
+}
+
+func flashVerdict(flashesPerSecond: Double, fileName: String, overrides: [String]) -> FlashVerdict {
+    guard flashesPerSecond > FlashVerdict.limitPerSecond else { return .withinLimit }
     return overrides.contains(fileName) ? .overridden : .excluded
 }

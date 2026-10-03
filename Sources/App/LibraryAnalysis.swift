@@ -1,8 +1,7 @@
 import Foundation
 
 // MARK: - Analysis queue
-// Every settled video is analysed once, in the background (utility QoS, one at a time, none started in Low Power
-// Mode): mean luminance, flash rate and a Poster from a representative frame. Results are cached in Application
+// Every settled video is analysed once, in the background (utility QoS, one at a time, none in Low Power Mode): mean luminance, flash rate and a Poster from a representative frame. Results are cached in Application
 // Support (see AnalysisCache.swift) and pruned on each folder scan.
 
 /// Unchecked because its state is only touched on the main queue: the background job captures plain values and
@@ -11,9 +10,12 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
     /// Called on the main queue after a video's Analysis is stored.
     var onAnalysed: () -> Void = {}
 
-    /// No new Analysis starts while on; turning it off resumes the queue.
+    /// While on, no Analysis runs: one in progress is cancelled and queued again. Turning it off resumes the queue.
     var isPowerSaving = false {
-        didSet { if oldValue && !isPowerSaving { startNext() } }
+        didSet {
+            guard isPowerSaving != oldValue else { return }
+            if isPowerSaving { job?.cancel() } else { startNext() }
+        }
     }
 
     private let cacheFile: URL
@@ -22,6 +24,7 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
     private var pending: [(video: URL, file: VideoFile)] = []
     /// The video being analysed (see `key`), so a folder scan meanwhile doesn't queue it again.
     private var running: String?
+    private var job: Task<Void, Never>?
     /// Videos whose Analysis failed (see `key`): retried only once the file changes.
     private var failed: Set<String> = []
 
@@ -48,6 +51,8 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
             (directory.appendingPathComponent($0.key).path, $0.value)
         })
         if cache.prune(present: byPath) { saveCache() }
+        let presentKeys = Set(present.map { Self.key(directory.appendingPathComponent($0.key), $0.value) })
+        failed.formIntersection(presentKeys)
         let done = Set(present.filter { name, file in
             let key = Self.key(directory.appendingPathComponent(name), file)
             return cache.analysis(forVideoAt: directory.appendingPathComponent(name).path, file: file) != nil
@@ -63,7 +68,7 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
         let (video, file) = pending.removeFirst()
         running = Self.key(video, file)
         let poster = AppFiles.posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
-        Task.detached(priority: .utility) {
+        job = Task.detached(priority: .utility) {
             let start = Date()
             let outcome: Result<Analysis, Error>
             do {
@@ -83,14 +88,18 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
 
     private func finish(_ video: URL, file: VideoFile, outcome: Result<Analysis, Error>, took: TimeInterval) {
         running = nil
+        job = nil
         switch outcome {
         case .success(let analysis):
             cache.store(analysis, forVideoAt: video.path, file: file)
             saveCache()
             Log.write("analysis", String(
-                format: "video=%@ luminance=%.3f flashes=%d/s poster=%.2fs took=%.1fs", video.lastPathComponent,
+                format: "video=%@ luminance=%.3f flashes=%.1f/s poster=%.2fs took=%.1fs", video.lastPathComponent,
                 analysis.meanLuminance, analysis.flashesPerSecond, analysis.posterSeconds, took))
             onAnalysed()
+        case .failure(is CancellationError):
+            pending.insert((video, file), at: 0)
+            Log.write("analysis", "video=\(video.lastPathComponent) paused for Low Power Mode")
         case .failure(let error):
             failed.insert(Self.key(video, file))
             Log.write("analysis", "video=\(video.lastPathComponent) failed: \(error); it will not play")

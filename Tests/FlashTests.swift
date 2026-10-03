@@ -49,7 +49,7 @@ private func runGridTests() {
 
 /// Flashes per second of a full-frame square wave between two luminance levels.
 private func squareWaveRate(hertz: Double, fps: Double, low: Double = 0.05, high: Double = 0.6, seconds: Double = 4)
-    -> Int {
+    -> Double {
     var screener = FlashScreener()
     for frame in 0..<Int(seconds * fps) {
         let time = Double(frame) / fps
@@ -63,9 +63,9 @@ private func runSquareWaveTests() {
     for fps in [24.0, 25, 30, 60] {
         for hertz in [2.0, 3, 4, 6] {
             let rate = squareWaveRate(hertz: hertz, fps: fps)
-            checkEqual(rate, Int(hertz))
+            checkEqual(rate, hertz)
             let verdict = flashVerdict(flashesPerSecond: rate, fileName: "wave.mp4", overrides: [])
-            checkEqual(verdict, hertz <= 3 ? .eligible : .excluded)
+            checkEqual(verdict, hertz <= 3 ? .withinLimit : .excluded)
         }
     }
     // Changes under 0.10 are not flashes.
@@ -75,19 +75,25 @@ private func runSquareWaveTests() {
     // Both states at or above 0.80 are too bright to count (the darker state must be below 0.80).
     checkEqual(squareWaveRate(hertz: 6, fps: 30, low: 0.80, high: 1.0), 0)
     checkEqual(squareWaveRate(hertz: 6, fps: 30, low: 0.79, high: 1.0), 6)
+    // 3.5 Hz has 7 transitions in some second: over the limit, though only 3 flashes are complete.
+    for fps in [24.0, 30, 60] {
+        checkEqual(flashVerdict(flashesPerSecond: squareWaveRate(hertz: 3.5, fps: fps), fileName: "", overrides: []),
+                   .excluded)
+    }
 }
 
 private func runSlowChangeTests() {
-    // A drift from dark to bright over 10 s and back makes two transitions far apart: no flash.
+    // A drift from dark to bright over 10 s and back makes two transitions far apart: never a pair, so at most
+    // the half flash a single change counts for.
     var drift = FlashScreener()
     for frame in 0..<600 {
         let time = Double(frame) / 30
         let value = 0.05 + 0.5 * (time < 10 ? time / 10 : (20 - time) / 10)
         drift.add(regions: [Double](repeating: value, count: FlashGrid.regionCount), at: time)
     }
-    checkEqual(drift.measurement?.flashesPerSecond, 0)
+    checkEqual(drift.measurement?.flashesPerSecond, 0.5)
     // A slow 0.5 Hz pulse: one transition per second at most, so no pair within any second.
-    checkEqual(squareWaveRate(hertz: 0.5, fps: 30), 0)
+    checkEqual(squareWaveRate(hertz: 0.5, fps: 30), 0.5)
     // Rain-like noise with an occasional lightning flash once every 2 s stays well under the limit.
     var rain = FlashScreener()
     var seed: UInt64 = 42
@@ -142,12 +148,18 @@ private func runPosterFrameTests() {
 }
 
 private func runVerdictTests() {
-    checkEqual(flashVerdict(flashesPerSecond: 0, fileName: "a.mp4", overrides: []), .eligible)
-    checkEqual(flashVerdict(flashesPerSecond: 3, fileName: "a.mp4", overrides: []), .eligible)
+    checkEqual(flashVerdict(flashesPerSecond: 0, fileName: "a.mp4", overrides: []), .withinLimit)
+    checkEqual(flashVerdict(flashesPerSecond: 3, fileName: "a.mp4", overrides: []), .withinLimit)
     checkEqual(flashVerdict(flashesPerSecond: 4, fileName: "a.mp4", overrides: []), .excluded)
     checkEqual(flashVerdict(flashesPerSecond: 4, fileName: "a.mp4", overrides: ["a.mp4"]), .overridden)
     checkEqual(flashVerdict(flashesPerSecond: 9, fileName: "a.mp4", overrides: ["b.mp4", "A.mp4"]), .excluded)
-    checkEqual(flashVerdict(flashesPerSecond: 2, fileName: "a.mp4", overrides: ["a.mp4"]), .eligible)
-    check(FlashVerdict.overridden.isPlayable && FlashVerdict.eligible.isPlayable, "overridden and eligible play")
+    checkEqual(flashVerdict(flashesPerSecond: 2, fileName: "a.mp4", overrides: ["a.mp4"]), .withinLimit)
+    checkEqual(flashVerdict(flashesPerSecond: 3.5, fileName: "a.mp4", overrides: []), .excluded)
+    // Logged once per change; videos within the limit aren't logged.
+    let current: [String: FlashVerdict] = ["a.mp4": .excluded, "b.mp4": .overridden, "c.mp4": .withinLimit]
+    checkEqual(verdictsToLog(previous: [:], current: current), ["a.mp4", "b.mp4"])
+    checkEqual(verdictsToLog(previous: ["a.mp4": .excluded, "b.mp4": .overridden], current: current), [])
+    checkEqual(verdictsToLog(previous: ["a.mp4": .excluded, "b.mp4": .excluded], current: current), ["b.mp4"])
+    check(FlashVerdict.overridden.isPlayable && FlashVerdict.withinLimit.isPlayable, "overridden and eligible play")
     check(!FlashVerdict.excluded.isPlayable, "Excluded doesn't play")
 }

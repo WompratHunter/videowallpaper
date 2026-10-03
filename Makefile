@@ -36,8 +36,8 @@ test:
 # `.build/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
 smoke:
 	@mkdir -p $(BUILD_DIR)
-	swiftc -parse-as-library -framework AVFoundation $(CORE_SRC) $(SMOKE_SRC) -o $(BUILD_DIR)/smoke
-	$(BUILD_DIR)/smoke
+	swiftc -parse-as-library -framework AVFoundation $(CORE_SRC) $(SMOKE_SRC) -o "$(BUILD_DIR)/smoke"
+	"$(BUILD_DIR)/smoke"
 
 build: lint test smoke
 	@mkdir -p $(BUILD_DIR)

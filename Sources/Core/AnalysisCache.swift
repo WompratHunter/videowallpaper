@@ -7,7 +7,7 @@ import Foundation
 /// A video's Analysis: its measurements plus the Poster saved from it.
 struct Analysis: Codable, Equatable {
     let meanLuminance: Double
-    let flashesPerSecond: Int
+    let flashesPerSecond: Double
     let posterSeconds: Double
     /// The Poster's file name in the app's Poster folder.
     let poster: String

@@ -15,7 +15,7 @@ enum LibraryAnalyser {
     }
 
     /// Mean luminance, the worst flash rate and the Poster time. Blocks while it decodes, so call it off the main
-    /// thread; a 20 s 4K60 clip takes a few seconds.
+    /// thread; a 20 s 4K60 clip takes a few seconds. Throws `CancellationError` soon after its task is cancelled.
     static func measure(_ video: URL) async throws -> FrameMeasurement {
         let asset = AVURLAsset(url: video)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw Failure.noVideoTrack }
@@ -32,6 +32,10 @@ enum LibraryAnalyser {
         }
         var screener = FlashScreener()
         while let sample = output.copyNextSampleBuffer() {
+            if Task.isCancelled {
+                reader.cancelReading()
+                throw CancellationError()
+            }
             guard let cells = cellLuminances(of: sample) else { continue }
             screener.add(
                 regions: FlashGrid.regions(cells: cells),

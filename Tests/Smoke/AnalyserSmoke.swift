@@ -16,7 +16,7 @@ enum AnalyserSmoke {
         }
         var failures = 0
         // Full-frame flashing at 3 Hz is at the limit; 5 Hz is over it. Both divide 30 fps into whole half-periods.
-        for (hertz, expected) in [(3, FlashVerdict.eligible), (5, .excluded)] {
+        for (hertz, expected) in [(3, FlashVerdict.withinLimit), (5, .excluded)] {
             let clip = FileManager.default.temporaryDirectory
                 .appendingPathComponent("videowallpaper-smoke-\(hertz)hz-\(UUID().uuidString).mp4")
             defer { try? FileManager.default.removeItem(at: clip) }
@@ -24,7 +24,7 @@ enum AnalyserSmoke {
                 try await writeClip(to: clip, hertz: hertz)
                 let measured = try await LibraryAnalyser.measure(clip)
                 let verdict = flashVerdict(flashesPerSecond: measured.flashesPerSecond, fileName: "", overrides: [])
-                let isExpected = measured.flashesPerSecond == hertz && verdict == expected
+                let isExpected = measured.flashesPerSecond == Double(hertz) && verdict == expected
                 if !isExpected { failures += 1 }
                 report("\(isExpected ? "ok" : "FAIL") \(hertz) Hz clip: \(describe(measured)) verdict=\(verdict)")
             } catch {
@@ -50,7 +50,7 @@ enum AnalyserSmoke {
 
     private static func describe(_ measured: FrameMeasurement) -> String {
         String(
-            format: "luminance=%.3f flashes=%d/s poster=%.2fs",
+            format: "luminance=%.3f flashes=%.1f/s poster=%.2fs",
             measured.meanLuminance, measured.flashesPerSecond, measured.posterSeconds)
     }
 

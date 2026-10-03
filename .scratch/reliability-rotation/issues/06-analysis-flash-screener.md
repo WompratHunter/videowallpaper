@@ -17,19 +17,19 @@
 ## Comments
 
 - Built.
-  - Core `Flash.swift`: sRGB→linear 256-entry table, BT.709 `relativeLuminance`, `FlashGrid` (12×12 cell means from a BGRA buffer; the full frame plus 121 overlapping 2×2 neighbourhoods), `TransitionDetector`, `FlashScreener` (streams frames, max transitions per region in any 1 s window, flashes = complete pairs), `posterFrameIndex`, `flashVerdict` (eligible / excluded / overridden).
+  - Core `Flash.swift`: sRGB→linear 256-entry table, BT.709 `relativeLuminance`, `FlashGrid` (12×12 cell means from a BGRA buffer; the full frame plus 121 overlapping 2×2 neighbourhoods), `TransitionDetector`, `FlashScreener` (streams frames, max transitions per region in any 1 s window, flashes = transitions / 2), `posterFrameIndex`, `flashVerdict` (withinLimit / excluded / overridden), `verdictsToLog` (log each Excluded/overridden video once per change).
   - Core `AnalysisCache.swift`: the cache index (path → size + mtime ms + Analysis, versioned JSON, prune), `screenEligible` and `videosToAnalyse` (newest first).
   - App `LibraryAnalyser.swift`: AVAssetReader decode at 192×108 BGRA into the screener; exact-time Poster frame. AVFoundation only, so the smoke test compiles it alone.
-  - App `LibraryAnalysis.swift`: `LibraryAnalysisQueue`. A detached utility task, one at a time, none started while `isPowerSaving`. It saves the Poster, then the cache, and logs `analysis video=… luminance=… flashes=…/s poster=…s took=…s`. A failed file is not retried until it changes.
+  - App `LibraryAnalysis.swift`: `LibraryAnalysisQueue`. A detached utility task, one at a time. Turning on `isPowerSaving` cancels a running Analysis (re-queued, logged `paused for Low Power Mode`) and starts none. It saves the Poster, then the cache, and logs `analysis video=… luminance=… flashes=…/s poster=…s took=…s`. A failed file is not retried until it changes.
   - `Library`: `videoToPlay()` is the newest *eligible* video; `eligibleVideos()` gives name, mtime and luminance; `flashOverrides` and `isPowerSaving` inputs. `onChange` fires only when the eligible set changes. Each Excluded (or overridden) video is logged once with its rate.
   - `LibraryPosters`: the export fallback uses the analysed Poster time instead of 5 s. A used saved Poster now also prunes stale ones, so the old 5 s Posters go.
-- The transition algorithm (the prototype's `transitions()` was rewritten). A change is measured from the last extreme, not from the previous frame, so a fade spread over frames counts once. Before the first transition the running min and max are tracked. A rise needs `value − min ≥ 0.10` with `min < 0.80`; a fall needs `max − value ≥ 0.10` with `value < 0.80`. There is a 1e-9 tolerance, so exactly 0.10 counts. A window holds transitions less than 1 s apart, and flashes = transitions / 2 (integer).
+- The transition algorithm (the prototype's `transitions()` was rewritten). A change is measured from the last extreme, not from the previous frame, so a fade spread over frames counts once. Before the first transition the running min and max are tracked. A rise needs `value − min ≥ 0.10` with `min < 0.80`; a fall needs `max − value ≥ 0.10` with `value < 0.80`. There is a 1e-9 tolerance, so exactly 0.10 counts. A window holds transitions less than 1 s apart, and flashes = transitions / 2 as a fraction. So 7 transitions in a second (a 3.5 Hz strobe) is 3.5/s and Excluded, the conservative reading; a lone change counts 0.5.
 - Measured on the user's videos (read only, `.build/smoke ~/Movies/LiveWallpaper/*.mp4`, -O build: about 1 s CPU in total for all four):
-  - capybara-anime-sunset-drive: luminance 0.299, 2 flashes/s, Poster at 5.70 s, 0.7 s wall.
-  - final-fantasy-vii-main-menu: 0.037, 0/s, 0.65 s, 3.2 s.
-  - lucyna-and-cat-rainy-neon-night (rain/lightning): 0.161, **1/s**, eligible. This matches the prototype's 1.0/s and 0.16.
-  - maomao-the-apothecary-diaries: 0.177, 0/s, 1.22 s, 6.4 s.
-- Tested (`make test`): the LUT and weights; grid and regions from a padded BGRA buffer; full-frame square waves at 2, 3, 4 and 6 Hz × 24, 25, 30 and 60 fps; the 0.10 and 0.80 thresholds; slow drift and a 0.5 Hz pulse not counted; rain-like noise with lightning every 2 s at 1/s; a 2.8% region flash at 3 and 6 Hz caught; the Poster-frame choice (dark intro skipped, ties earliest); verdict tiers and override (exact file name); cache lookup, replace/touch, JSON round trip, wrong version, prune; eligibility; Analysis order.
+  - capybara-anime-sunset-drive: luminance 0.299, 2.0 flashes/s, Poster at 5.70 s, 0.7 s wall.
+  - final-fantasy-vii-main-menu: 0.037, 0.0/s, 0.65 s, 3.2 s.
+  - lucyna-and-cat-rainy-neon-night (rain/lightning): 0.161, **1.5/s**, eligible: 3 opposing changes in its worst second. Under the earlier integer count it was 1/s, matching the prototype's 1.0/s; luminance matches the prototype's 0.16.
+  - maomao-the-apothecary-diaries: 0.177, 0.0/s, 1.22 s, 6.4 s.
+- Tested (`make test`): the LUT and weights; grid and regions from a padded BGRA buffer; full-frame square waves at 2, 3, 4 and 6 Hz × 24, 25, 30 and 60 fps; the 0.10 and 0.80 thresholds; 3.5 Hz Excluded at 24, 30 and 60 fps; slow drift and a 0.5 Hz pulse not counted; rain-like noise with lightning every 2 s at 1/s; a 2.8% region flash at 3 and 6 Hz caught; the Poster-frame choice (dark intro skipped, ties earliest); verdict tiers and override (exact file name); cache lookup, replace/touch, JSON round trip, wrong version, prune; eligibility; Analysis order.
 - Smoke (`make smoke`, now part of `make build`): the real analyser on generated 2 s 30 fps H.264 clips. 3 Hz gives 3/s (eligible) and 5 Hz gives 5/s (Excluded). Clips go to the temp dir and are deleted.
 - Wiring in `main.swift` (4 lines):
   - `Library(directory:analysisCache:)`.
@@ -41,8 +41,20 @@
   - An unanalysed video is not eligible, since it hasn't been screened. On the first launch after install the cache is empty, so the newest video plays only after its Analysis (a few seconds; Analysis goes newest first). Until then the windows have no Poster and show black, once. In Low Power Mode with an empty cache nothing plays until it ends.
   - The Poster file name now includes the frame choice (golden value in `PosterFilesTests` updated), so analysed Posters get new URLs. macOS would otherwise keep showing its cached 5 s frame as the desktop picture.
   - A Poster is saved for Excluded videos too, so an override plays with a Poster at once.
-  - The flash rate is an integer (complete pairs). A window with 7 transitions counts as 3 flashes.
+  - The flash rate is transitions / 2 as a fraction (changed after review), so a 3.5 Hz strobe is Excluded. A `FlashOverride` edit is read whenever the app decides, but nothing re-decides until the next folder change or Analysis.
   - Folder changes reach the player only when the *eligible* set changes. A newly dropped video triggers `onChange` once analysed, not when it settles.
+- Review (standards + spec), fixed:
+  - Rounding the flash rate down let 3.5 Hz through.
+  - A running Analysis now stops in Low Power Mode.
+  - The log-once verdict transition moved to Core (`verdictsToLog`, tested).
+  - `FlashVerdict.eligible` was renamed `withinLimit`, because overridden videos are eligible too.
+  - The smoke paths in the Makefile are quoted.
+  - The failed-Analysis set is pruned to present files.
+- Review, accepted:
+  - The queue's small bookkeeping (pending/running/failed) stays in App. Its decision, the order, is the Core `videosToAnalyse`.
+  - `Analysis` repeats `FrameMeasurement`'s fields rather than nesting it, to keep the cache JSON flat.
+  - The decode loop blocks one cooperative thread for a few seconds, one at a time. A Task is kept for cancellation.
+  - First-launch black until the first Analysis (see above).
 - Manual checks after `make install`:
   - The log shows four `analysis video=…` lines on first launch with values close to those above, then `analysis eligible videos=4`. Next launch shows no `analysis` lines, because the cache is used.
   - `~/Library/Application Support/VideoWallpaper/analysis-cache.json` exists with 4 entries. `posters/` holds 4 new-named Posters, and the old ones are gone after the first Poster is shown.
