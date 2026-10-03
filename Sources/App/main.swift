@@ -34,7 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         player.onVideoChange = { [weak self] url in self?.showPoster(for: url) }
         // A renamed or deleted Current video goes through Recovery (logged, Poster during the gap), because
         // AVFoundation may otherwise keep playing the old open file.
-        library.onChange = { [weak self] video in self?.player.folderChanged(newest: video) }
+        // Until Rotation decides switches, a new newest video crossfades in.
+        library.onChange = { [weak self] video in
+            self?.player.folderChanged(newest: video, fade: Crossfade.quickDuration)
+        }
         windows.onOcclusionChange = { [weak self] isAllOccluded in
             self?.player.apply(.allWindowsOccluded(isAllOccluded))
             self?.visibility.apply(.everyWindowOccluded(isAllOccluded), cause: "occlusion")
