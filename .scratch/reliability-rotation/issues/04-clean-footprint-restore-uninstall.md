@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** done (manual checks pending install)
+**Status:** done
 
 - [x] Poster written to Application Support with a per-video name and set as the desktop picture for every screen
 - [x] Legacy Poster file removed from the Wallpaper folder on launch
@@ -12,7 +12,7 @@
 - [x] Restore flag restores originals and exits without starting the UI
 - [x] `make uninstall` restores, then removes app, agent, Application Support and preferences
 - [x] README updated: what lives where, what uninstall removes, current-Space-only caveat
-- [ ] `make build` green; `make install` (do not run uninstall on the user's machine except to verify restore, then reinstall) — build green (224 checks); install left to the orchestrator
+- [x] `make build` green (225); `make install` of 1cbe311. Legacy .poster.jpg removed, Poster in Application Support, resumes on display wake. No originals recorded because every screen already showed our Poster, as expected.
 
 ## Comments
 
