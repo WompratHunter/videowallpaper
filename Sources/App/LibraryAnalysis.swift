@@ -79,7 +79,9 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
                     meanLuminance: measured.meanLuminance, flashesPerSecond: measured.flashesPerSecond,
                     posterSeconds: measured.posterSeconds, poster: poster.lastPathComponent))
             } catch {
-                outcome = .failure(error)
+                // AVFoundation may report a cancelled read or image request as its own error; a cancelled job must
+                // be re-queued, not marked failed (which would keep the video from ever playing).
+                outcome = .failure(Task.isCancelled ? CancellationError() : error)
             }
             let took = Date().timeIntervalSince(start)
             DispatchQueue.main.async { [weak self] in self?.finish(video, file: file, outcome: outcome, took: took) }
