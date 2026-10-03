@@ -3,4 +3,5 @@
 
 runLogTests()
 runPlayerStateReportTests()
+runRecoveryTests()
 finishTests()
