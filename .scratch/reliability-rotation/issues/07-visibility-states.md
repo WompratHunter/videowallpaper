@@ -4,7 +4,7 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done (installed ac6a107; lock/Ghostty/--check-veil checks pending user)
 
 - [x] Classification and allowed-transition mapping are pure core functions with tests (inputs: occluded, screens asleep, session inactive, coverage fraction + duration)
 - [x] Coverage computation (union of window bounds vs screen frame) is a pure function with tests
