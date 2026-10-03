@@ -62,6 +62,12 @@ final class WallpaperWindow: NSWindow {
 
     func pause() { player?.pause() }
     func resume() { player?.play() }
+
+    func reassert() {
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
+        orderBack(nil)
+        if player?.timeControlStatus == .paused { player?.play() }
+    }
 }
 
 // MARK: - App delegate
@@ -70,11 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [WallpaperWindow] = []
     private var currentVideo: URL?
     private var folderWatch: DispatchSourceFileSystemObject?
+    private var reassertTimer: Timer?
     private let wallpaperDir = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
 
     func applicationDidFinishLaunching(_ n: Notification) {
         buildWindows()
         startFolderWatch()
+        startReassertTimer()
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(screensSleep),
             name: NSWorkspace.screensDidSleepNotification, object: nil)
@@ -141,10 +149,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Reassert timer
+
+    private func startReassertTimer() {
+        reassertTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            self?.windows.forEach { $0.reassert() }
+        }
+    }
+
     // MARK: - Notifications
 
     @objc private func screensSleep() { windows.forEach { $0.pause() } }
-    @objc private func screensWake()  { windows.forEach { $0.resume() } }
+    @objc private func screensWake()  { windows.forEach { $0.reassert() } }
     @objc private func screensChanged() { buildWindows() }
 }
 
