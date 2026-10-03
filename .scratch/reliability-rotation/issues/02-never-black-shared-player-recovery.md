@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Poster layer under the video layer in every window; one decoded Poster image shared by all windows; window stays opaque
 - [x] One shared looping player feeds an `AVPlayerLayer` per window; windows ordered front without becoming key
@@ -13,8 +13,8 @@
 - [x] Item failure / failed-to-play-to-end notifications trigger Recovery
 - [x] Rebuild on wake/unlock only when not actually playing
 - [x] Resume at the saved position after rebuild
-- [ ] Manual check: renaming the playing video mid-play logs a Recovery and shows the Poster, then the newest remaining video plays
-- [ ] `make build` green; `make install` and the app is visibly playing
+- [x] Manual check: renaming the playing video mid-play logs a Recovery and shows the Poster, then the newest remaining video plays
+- [x] `make build` green; `make install` and the app is visibly playing
 
 ## Comments
 
@@ -33,3 +33,5 @@
   - Run `pmset sleepnow`, then wake and unlock. The log should show the `screens-wake`/`wake`/`unlock` lines and a healthy player should not be rebuilt. If the player is dead, there should be a `not-playing-on-wake` Recovery line and playback should resume at about the same position.
   - Mission Control and Spaces: the window is not key and takes no focus, and it stays behind the desktop icons (`reassert` now uses `orderFront` within the desktop level, not `orderBack`).
   - A corrupt file as the newest video: three Recovery lines (10 s, 60 s, 300 s), then `resting on Poster`.
+
+- Orchestrator (post-merge): rename test passed after fix e3f2ba8+24ea329: `no-video` rest on Poster (no backoff), restore gives `video-available` rebuild in 2 s. One launch line for 3 screens confirms the shared player. Sleep/wake and Mission Control to be observed in normal use.
