@@ -17,6 +17,15 @@ func videoSnapshot(of dir: URL) -> [String: VideoFile] {
     return videoListing(of: entries)
 }
 
+/// Where a video's Poster is kept: its name changes when the file is replaced, so a stale Poster is never shown.
+func posterURL(for video: URL) -> URL? {
+    guard let values = try? video.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+          let size = values.fileSize, let modified = values.contentModificationDate
+    else { return nil }
+    let file = VideoFile(size: Int64(size), modified: modified)
+    return AppFiles.posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
+}
+
 // MARK: - Per-screen wallpaper window
 // Only hosts the shared player's layers; all playback lives in Player.
 
@@ -56,15 +65,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var folderWatch: DispatchSourceFileSystemObject?
     private var settler = FolderSettler(launch: [:], now: Date())
     private var tickTimer: Timer?
-    private let wallpaperDir = URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
+    private let wallpaperDir = AppFiles.wallpaperDirectory
 
     func applicationDidFinishLaunching(_ n: Notification) {
         Log.write("launch", "pid=\(ProcessInfo.processInfo.processIdentifier) screens=\(NSScreen.screens.count)")
         player.videoProvider = { [weak self] in self?.newestSettledVideo() }
-        player.onVideoChange = { [weak self] url in self?.exportPoster(from: url) }
-        loadSavedPoster()
-        // Settled videos are known before the first pick; Low Power Mode is known before any player is built.
+        player.onVideoChange = { [weak self] url in self?.showPoster(for: url) }
+        removeLegacyPoster()
+        // Settled videos are known before the first pick and its saved Poster; Low Power Mode is known before any
+        // player is built.
         startFolderWatch()
+        loadSavedPoster()
         player.apply(.lowPower(ProcessInfo.processInfo.isLowPowerModeEnabled))
         buildWindows()
         player.start()
@@ -120,41 +131,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isAllOccluded = isEveryWindowOccluded(visibility: windows.map { $0.occlusionState.contains(.visible) })
         Log.write("occlusion", "\(change) all-occluded=\(isAllOccluded ? "yes" : "no")")
         player.apply(.allWindowsOccluded(isAllOccluded))
-    }
-
-    /// The last exported Poster, so the underlay isn't empty while the new one is generated at launch.
-    private func loadSavedPoster() {
-        let url = wallpaperDir.appendingPathComponent(".poster.jpg")
-        guard let image = NSImage(contentsOf: url)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        else { return }
-        player.setPoster(image)
-    }
-
-    // MARK: - Poster for the window underlay, Mission Control and the Lock screen
-
-    private func exportPoster(from video: URL) {
-        let poster = wallpaperDir.appendingPathComponent(".poster.jpg")
-        let asset = AVURLAsset(url: video)
-        let gen = AVAssetImageGenerator(asset: asset)
-        gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 3840, height: 2160)
-        gen.generateCGImageAsynchronously(for: CMTime(seconds: 5, preferredTimescale: 600)) { img, _, err in
-            guard let img, err == nil else { return }
-            DispatchQueue.main.async { [weak self] in
-                guard self?.player.video == video else { return }
-                self?.player.setPoster(img)
-            }
-            let rep = NSBitmapImageRep(cgImage: img)
-            if let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) {
-                try? data.write(to: poster)
-                DispatchQueue.main.async(execute: DispatchWorkItem {
-                    for screen in NSScreen.screens {
-                        try? NSWorkspace.shared.setDesktopImageURL(
-                            poster, for: screen, options: [:])
-                    }
-                })
-            }
-        }
     }
 
     // MARK: - Shared tick
@@ -266,9 +242,91 @@ extension AppDelegate {
     }
 }
 
+// MARK: - Posters for the window underlay, Mission Control and the Lock screen
+
+extension AppDelegate {
+    /// The Current video's saved Poster, so the underlay isn't empty while the player starts.
+    private func loadSavedPoster() {
+        guard let video = newestSettledVideo(), let poster = posterURL(for: video), let image = loadImage(poster)
+        else { return }
+        player.setPoster(image)
+    }
+
+    /// Earlier versions wrote the Poster into the Wallpaper folder; it now lives in Application Support.
+    private func removeLegacyPoster() {
+        guard FileManager.default.fileExists(atPath: AppFiles.legacyPoster.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: AppFiles.legacyPoster)
+            Log.write("launch", "removed legacy Poster from the Wallpaper folder")
+        } catch {
+            Log.write("launch", "cannot remove legacy Poster: \(error.localizedDescription)")
+        }
+    }
+
+    private func loadImage(_ url: URL) -> CGImage? {
+        NSImage(contentsOf: url)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    }
+
+    /// Reuses the video's saved Poster, or exports one, then makes it the desktop picture on every screen.
+    private func showPoster(for video: URL) {
+        guard let poster = posterURL(for: video) else { return }
+        guard let image = loadImage(poster) else {
+            exportPoster(from: video, to: poster)
+            return
+        }
+        player.setPoster(image)
+        DesktopPictures.setPoster(poster)
+    }
+
+    private func exportPoster(from video: URL, to poster: URL) {
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: video))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 3840, height: 2160)
+        gen.generateCGImageAsynchronously(for: CMTime(seconds: 5, preferredTimescale: 600)) { img, _, err in
+            guard let img, err == nil else { return }
+            let isSaved = Self.save(img, to: poster)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.player.video == video else { return }
+                self.player.setPoster(img)
+                guard isSaved else { return }
+                DesktopPictures.setPoster(poster)
+                self.pruneStalePosters()
+            }
+        }
+    }
+
+    private static func save(_ image: CGImage, to poster: URL) -> Bool {
+        let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+        do {
+            guard let data else { throw CocoaError(.fileWriteUnknown) }
+            try FileManager.default.createDirectory(at: AppFiles.posterDirectory, withIntermediateDirectories: true)
+            try data.write(to: poster, options: .atomic)
+            return true
+        } catch {
+            Log.write("poster", "cannot save \(poster.lastPathComponent): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Posters of videos no longer in the folder are deleted, so Application Support doesn't grow forever.
+    private func pruneStalePosters() {
+        let keep = Set(videoSnapshot(of: wallpaperDir).map { name, file in
+            posterFileName(forVideoAt: wallpaperDir.appendingPathComponent(name).path, file: file)
+        })
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
+        for name in stalePosters(in: names, keeping: keep) {
+            try? FileManager.default.removeItem(at: AppFiles.posterDirectory.appendingPathComponent(name))
+        }
+    }
+}
+
 // MARK: - Entry point
 
 let app = NSApplication.shared
+// Run by `make uninstall` after the LaunchAgent is unloaded: restore and exit, with no windows or player.
+if CommandLine.arguments.contains("--restore-wallpaper") {
+    exit(DesktopPictures.restoreOriginals())
+}
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
 app.delegate = delegate

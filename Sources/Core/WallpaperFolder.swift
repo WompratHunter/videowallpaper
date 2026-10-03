@@ -1,8 +1,8 @@
 import Foundation
 
 // MARK: - Wallpaper folder listing
-// Only the user's videos count as a folder change. The hidden Poster export and Finder's .DS_Store also land in
-// the folder; treating those as changes would reset the Recovery backoff and end a rest on the Poster for nothing.
+// Only the user's videos count as a folder change. Finder's .DS_Store (and an older version's hidden Poster) also
+// land in the folder; treating those as changes would reset the Recovery backoff and end a rest on the Poster.
 
 func isWallpaperVideo(named name: String) -> Bool {
     !name.hasPrefix(".") && ["mp4", "mov", "m4v"].contains((name as NSString).pathExtension.lowercased())
