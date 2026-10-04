@@ -68,7 +68,6 @@ defaults write com.evanscott.videowallpaper FlashOverride -array-add "strobe.mov
 defaults delete com.evanscott.videowallpaper FlashOverride                          # remove all overrides
 ```
 
-
 ## Rotation
 
 Every eligible video (analysed and not Excluded) takes turns:
@@ -76,7 +75,7 @@ Every eligible video (analysed and not Excluded) takes turns:
 - **Dwell.** A video stays for at least 20 minutes of awake, unlocked time. Time asleep, locked, with the displays off or switched to another user doesn't count; time behind other windows does.
 - **When it switches.** After 20 minutes, the switch waits for a moment when the wallpaper is **Unseen** (displays asleep, locked, or every display covered by opaque windows) or **Veiled** (at least 95% of every display covered by windows for 30 s, e.g. a maximised translucent terminal), and is a 5 s crossfade. If neither happens, after an hour it switches anyway while visible, with a slow 20 s crossfade.
 - **What comes next.** A random video not yet played in this pass, among those within 0.08 mean luminance of the current one, so the brightness never jumps while you can see it. If no unplayed video is that close, the nearest one plays, but only while Unseen. Once every video has played, a new pass starts.
-- **New and removed videos.** A video you add plays next, at the next switch point (under the same brightness rule). Deleting the video that's playing replaces it at once; the Poster covers the gap.
+- **New and removed videos.** A video you add plays next, at the next switch point (under the same brightness rule and whatever the `Mode`), and stays its full 20 minutes. Deleting the video that's playing replaces it at once; the Poster covers the gap.
 - **Light and Dark.** With `Mode` set to `dynamic` (the default when the appearance is Auto), Dark prefers the darker half of your videos by median luminance and Light the brighter half. An appearance change switches at the next Unseen or Veiled moment, not in front of you. With fewer than 4 videos `dynamic` plays them all; once the matching half has all played, it replays from that half.
 - **Low Power Mode** shows the Poster and doesn't switch; a deleted video is still replaced when it ends.
 

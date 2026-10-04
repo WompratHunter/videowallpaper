@@ -41,6 +41,7 @@
 - Other changes: `Library.videoToPlay()` and Core `newestVideo` were removed. `folderChanged(newest:)`, `folderChangeAction(newest:)` and `rebuildPlan(newest:)` were renamed `toPlay:`. The standards list the Rotation module.
 - Deviations and interpretations:
   - A new video plays next, ahead of the random pick, regardless of Mode. It still obeys the brightness rule, so a far-off new video waits for Unseen and holds other switches until then.
+  - Review: an off-Mode new video keeps its full Dwell (the Mode-change shortcut skips it), and a lone video doesn't ask for the window list.
   - Videos present at launch but analysed later join without counting as new. A deleted and re-added name counts as new.
   - Dwell also pauses while the displays sleep (not just while locked) and during fast user switching. Opaque windows don't pause it.
   - An off-Mode Current video (appearance flip or `Mode` edit) switches at the next Unseen/Veiled moment without waiting for Dwell.

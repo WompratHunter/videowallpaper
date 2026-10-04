@@ -179,6 +179,9 @@ struct RotationState {
     private var known: Set<String>
     private var lastEligible: Set<String> = []
     private var desk = VisibilityInputs()
+    /// The Current video was newly added: it plays whatever the Mode, so being outside the preferred half doesn't cut
+    /// its Dwell short.
+    private var isCurrentNew = false
 
     /// `present`: the folder's videos at launch. They join the Rotation as their Analysis finishes, not as new videos.
     init(present: Set<String>, dwellScale: Double = 1) {
@@ -194,9 +197,11 @@ struct RotationState {
     }
 
     /// Whether the next Unseen or Veiled moment would switch, so the app samples window coverage for Veiled.
+    /// Nothing to switch to (a lone video) is never near, so the window list isn't read for nothing.
     func isSwitchPointNear(_ situation: RotationSituation) -> Bool {
         guard let current else { return false }
-        return !situation.isPreferred(current) || dwell.elapsed >= minimumDwell(for: .veiled)
+        let hasNext = nextNewVideo(in: situation) != nil || situation.candidates.contains { $0.name != current.name }
+        return hasNext && (isOffMode(current, situation) || dwell.elapsed >= minimumDwell(for: .veiled))
     }
 
     mutating func decide(
@@ -212,23 +217,18 @@ struct RotationState {
         self.current = current
         guard !situation.isPowerSaving else { return .stay }
         let allowed = allowedTransition(for: situation.visibility)
-        let isDwellDone = dwell.elapsed >= minimumDwell(for: situation.visibility)
+        // An off-Mode video (appearance flip, `Mode` edit) goes at the next Unseen or Veiled moment, without Dwell.
+        let isModeChange = isOffMode(current, situation) && situation.visibility != .visible
+        guard isModeChange || dwell.elapsed >= minimumDwell(for: situation.visibility) else { return .stay }
         if let next = nextNewVideo(in: situation) {
-            guard isDwellDone else { return .stay }
             guard allowed.allowsBrightnessJump || isWithinBand(next, current) else { return .waitingForUnseen }
             return commit(
                 (next, startsPass: false), from: current, reason: .newVideo, fade: allowed.crossfade,
                 situation: situation)
         }
         let candidates = situation.candidates
-        let reason: SwitchReason
-        if !situation.isPreferred(current) && situation.visibility != .visible {
-            reason = .modeChange
-        } else if isDwellDone {
-            reason = situation.visibility == .visible ? .visibleFallback : .dwell
-        } else {
-            return .stay
-        }
+        let reason: SwitchReason = isModeChange ? .modeChange
+            : situation.visibility == .visible ? .visibleFallback : .dwell
         let allowsJump = allowed.allowsBrightnessJump
         guard let pick = pickNext(
             from: current, candidates: candidates, played: played, allowsBigJump: allowsJump, using: &rng)
@@ -237,6 +237,10 @@ struct RotationState {
             return hasOthers && !allowsJump ? .waitingForUnseen : .stay
         }
         return commit(pick, from: current, reason: reason, fade: allowed.crossfade, situation: situation)
+    }
+
+    private func isOffMode(_ current: EligibleVideo, _ situation: RotationSituation) -> Bool {
+        !isCurrentNew && !situation.isPreferred(current)
     }
 
     private func nextNewVideo(in situation: RotationSituation) -> EligibleVideo? {
@@ -296,6 +300,7 @@ struct RotationState {
         let next = pick.video
         if pick.startsPass { played = [] }
         played.insert(next.name)
+        isCurrentNew = pendingNew.contains(next.name)
         pendingNew.removeAll { $0 == next.name }
         current = next
         dwell.restart()

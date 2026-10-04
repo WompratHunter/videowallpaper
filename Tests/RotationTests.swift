@@ -300,6 +300,19 @@ private func runAppearanceTests() {
     let three = [capybara, lucyna, maomao]
     var small = playing(capybara, among: three, mode: .dynamic)
     checkEqual(small.decide(situation(at: 5, three, .unseen, mode: .dynamic, appearance: .dark), using: &rng), .stay)
+
+    // A newly added video plays whatever the Mode, and keeps its full Dwell though it's outside the preferred half.
+    var fresh = playing(lucyna, mode: .dynamic)
+    let brightNew = video("sunny.mp4", 0.2, modified: 100)
+    let withNew = userVideos + [brightNew]
+    let dark = { (now: TimeInterval, visibility: VisibilityState) in
+        situation(at: now, withNew, visibility, mode: .dynamic, appearance: .dark)
+    }
+    _ = fresh.decide(dark(5, .visible), using: &rng)
+    tick(&fresh, from: 5, until: twentyMinutes, withNew)
+    checkEqual(switched(fresh.decide(dark(twentyMinutes, .veiled), using: &rng))?.to, brightNew)
+    checkEqual(fresh.decide(dark(twentyMinutes + 60, .unseen), using: &rng), .stay)
+    check(!fresh.isSwitchPointNear(dark(twentyMinutes + 60, .visible)), "a new video's Dwell isn't cut short")
 }
 
 // MARK: - Folder changes
@@ -350,4 +363,16 @@ private func runLibraryChangeTests() {
     check(last.current == nil, "no Current video once the folder is empty")
     // A video added to an empty Rotation plays at once.
     checkEqual(switched(last.decide(situation(at: 10, [maomao]), using: &rng))?.reason, .firstVideo)
+    runSwitchPointTests()
+}
+
+/// Veiled is sampled from the window list only when a switch could follow.
+private func runSwitchPointTests() {
+    // A lone video has nowhere to go, so a long Dwell doesn't ask for the window list.
+    var lone = playing(lucyna, among: [lucyna])
+    tick(&lone, from: 0, until: oneHour, [lucyna])
+    check(!lone.isSwitchPointNear(situation(at: oneHour, [lucyna])), "a lone video is never near a switch")
+    var pair = playing(lucyna, among: [lucyna, maomao])
+    tick(&pair, from: 0, until: twentyMinutes + 10, [lucyna, maomao])
+    check(pair.isSwitchPointNear(situation(at: twentyMinutes, [lucyna, maomao])), "Dwell met with somewhere to go")
 }
