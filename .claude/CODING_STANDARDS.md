@@ -41,6 +41,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
   - **Library** (`Library*.swift`): the Wallpaper folder watch, settle check, the video to play and its Posters
   - **WallpaperWindows** (`WallpaperWindows*.swift`): one desktop-level window per screen, hosting the Player's layers, and occlusion
   - **Visibility** (`Visibility*.swift`): Unseen, Veiled or Visible, with a change callback
+  - **Rotation** (`Rotation*.swift`): the switch scheduler, gathering Dwell, Visibility, eligible videos, `Mode` and the appearance for Core's `RotationState`, with an `onSwitch` callback
   - `DesktopPictures.swift`: app paths (`AppFiles`) and the system desktop picture, used by the wiring
 - A module talks to the outside through its methods and `on…` callback properties that the wiring sets; it does not hold references to other modules (a module may be given another as a dependency only to host it, as WallpaperWindows hosts the Player's layers)
 - A module may span several files (one type plus extensions, or small internal helper types) when it grows past ~150 lines per type or ~400 per file; name the files after the module (`Player…`, `Library…`)

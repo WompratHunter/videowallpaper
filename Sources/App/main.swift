@@ -69,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rotation.checkVeil = { [weak self] in self?.visibility.checkVeil() ?? .visible }
         rotation.isPowerSaving = { ProcessInfo.processInfo.isLowPowerModeEnabled }
         rotation.modeSetting = { UserDefaults.standard.string(forKey: "Mode") }
+        // The global flag is undocumented: absent reads as off, so the default Mode falls back to `all`.
+        rotation.isAutoAppearance = { UserDefaults.standard.bool(forKey: "AppleInterfaceStyleSwitchesAutomatically") }
         rotation.onSwitch = { [weak self] video, fade in self?.player.play(video, fade: fade) }
         // An Unseen or Veiled moment is a switch point, acted on at once rather than at the next tick.
         visibility.onChange = { [weak self] _ in self?.rotation.evaluate(cause: "visibility") }

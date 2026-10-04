@@ -337,6 +337,13 @@ private func runLibraryChangeTests() {
     checkEqual(removed?.reason, .currentRemoved)
     checkEqual(removed?.to, maomao)
     checkEqual(removed?.from, lucyna)
+    checkEqual(removed?.isDeferred, false)
+    // In Low Power Mode the replacement is still chosen, but deferred: it plays when Low Power Mode ends.
+    var lowPower = playing(lucyna)
+    let deferred = switched(lowPower.decide(situation(at: 5, [capybara, maomao], isPowerSaving: true), using: &rng))
+    checkEqual(deferred?.to, maomao)
+    checkEqual(deferred?.isDeferred, true)
+    checkEqual(lowPower.current, maomao)
     // The last video removed: nothing to play.
     var last = playing(lucyna, among: [lucyna])
     checkEqual(last.decide(situation(at: 5, []), using: &rng), .stay)

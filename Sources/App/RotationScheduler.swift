@@ -15,6 +15,8 @@ final class RotationScheduler {
     var isPowerSaving: () -> Bool = { false }
     /// The raw `Mode` setting, read at every decision so a change applies without a restart.
     var modeSetting: () -> String? = { nil }
+    /// Whether the system appearance switches automatically (read only), which makes `dynamic` the default Mode.
+    var isAutoAppearance: () -> Bool = { false }
 
     private let directory: URL
     private var state: RotationState
@@ -48,10 +50,7 @@ final class RotationScheduler {
 
     /// On the shared tick and on a Visibility change: decides, and switches if the moment allows.
     func evaluate(cause: String) {
-        guard let change = decide(cause: cause, sampleVeil: true) else { return }
-        // A forced switch in Low Power Mode is only remembered: no player is built until it ends, and that rebuild
-        // asks for `video`.
-        guard !isPowerSaving() else { return }
+        guard let change = decide(cause: cause, sampleVeil: true), !change.isDeferred else { return }
         onSwitch(directory.appendingPathComponent(change.to.name), change.fade)
     }
 
@@ -98,18 +97,18 @@ final class RotationScheduler {
         Log.write("rotation", "switch reason=\(change.reason.rawValue) on=\(cause) "
             + "from=\(change.from?.name ?? "none") to=\(change.to.name) ΔL=\(deltaL) fade=\(Int(change.fade))s "
             + "visibility=\(situation.visibility.rawValue) mode=\(situation.mode.rawValue) "
-            + "appearance=\(situation.appearance.rawValue) dwell=\(Int(dwell / 60))m")
+            + "appearance=\(situation.appearance.rawValue) dwell=\(Int(dwell / 60))m"
+            + (change.isDeferred ? " (Low Power Mode: plays when it ends)" : ""))
     }
 }
 
 // MARK: - Mode and appearance
 
 extension RotationScheduler {
-    /// The `Mode` setting, defaulting by the global auto-appearance flag (read only; undocumented, so absent reads
-    /// as off and the default falls back to `all`). Logged when it changes.
+    /// The `Mode` setting, defaulting by the auto-appearance flag. Logged when it changes.
     private func currentMode() -> RotationMode {
         let setting = modeSetting()
-        let isAuto = UserDefaults.standard.bool(forKey: "AppleInterfaceStyleSwitchesAutomatically")
+        let isAuto = isAutoAppearance()
         let mode = rotationMode(setting: setting, isAutoAppearance: isAuto)
         let description = "mode=\(mode.rawValue) setting=\(setting ?? "none") auto-appearance=\(isAuto ? "yes" : "no")"
         if description != loggedMode {

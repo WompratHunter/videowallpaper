@@ -129,6 +129,8 @@ struct RotationSwitch: Equatable {
     let to: EligibleVideo
     let reason: SwitchReason
     let fade: TimeInterval
+    /// Low Power Mode: the Rotation moves on, but no player is built until it ends; that rebuild plays `to`.
+    let isDeferred: Bool
 
     var deltaL: Double? { from.map { luminanceDistance($0, to) } }
 }
@@ -148,6 +150,18 @@ struct RotationSituation {
     var mode: RotationMode
     var appearance: Appearance
     var isPowerSaving = false
+
+    /// The videos the Mode prefers right now.
+    var candidates: [EligibleVideo] { modeCandidates(eligible, mode: mode, appearance: appearance) }
+
+    func isPreferred(_ video: EligibleVideo) -> Bool { candidates.contains { $0.name == video.name } }
+
+    func eligible(named name: String) -> EligibleVideo? { eligible.first { $0.name == name } }
+}
+
+extension VisibilityInputs {
+    /// Asleep, locked or switched away: not awake, unlocked time, so Dwell doesn't count.
+    var isAwayFromDesk: Bool { areScreensAsleep || isLocked || isSessionInactive }
 }
 
 // MARK: - Rotation state
@@ -176,24 +190,22 @@ struct RotationState {
     /// still awake, unlocked time.
     mutating func apply(_ event: VisibilityEvent, at now: TimeInterval) {
         desk.apply(event)
-        dwell.advance(to: now, isCounting: isAtDesk)
+        dwell.advance(to: now, isCounting: !desk.isAwayFromDesk)
     }
 
     /// Whether the next Unseen or Veiled moment would switch, so the app samples window coverage for Veiled.
     func isSwitchPointNear(_ situation: RotationSituation) -> Bool {
         guard let current else { return false }
-        let candidates = modeCandidates(situation.eligible, mode: situation.mode, appearance: situation.appearance)
-        let isOffMode = !candidates.contains { $0.name == current.name }
-        return isOffMode || dwell.elapsed >= minimumDwell(for: .veiled)
+        return !situation.isPreferred(current) || dwell.elapsed >= minimumDwell(for: .veiled)
     }
 
     mutating func decide(
         _ situation: RotationSituation, using rng: inout some RandomNumberGenerator
     ) -> RotationOutcome {
-        dwell.advance(to: situation.now, isCounting: isAtDesk)
+        dwell.advance(to: situation.now, isCounting: !desk.isAwayFromDesk)
         noteLibrary(situation.eligible)
         guard let previous = current else { return startRotation(situation, using: &rng) }
-        guard let current = situation.eligible.first(where: { $0.name == previous.name }) else {
+        guard let current = situation.eligible(named: previous.name) else {
             return replaceRemoved(previous, situation, using: &rng)
         }
         // A re-analysed video keeps its place with its new luminance.
@@ -201,15 +213,16 @@ struct RotationState {
         guard !situation.isPowerSaving else { return .stay }
         let allowed = allowedTransition(for: situation.visibility)
         let isDwellDone = dwell.elapsed >= minimumDwell(for: situation.visibility)
-        if let next = pendingNew.first.flatMap({ name in situation.eligible.first { $0.name == name } }) {
+        if let next = nextNewVideo(in: situation) {
             guard isDwellDone else { return .stay }
             guard allowed.allowsBrightnessJump || isWithinBand(next, current) else { return .waitingForUnseen }
-            return commit(next, from: current, reason: .newVideo, fade: allowed.crossfade, startsPass: false)
+            return commit(
+                (next, startsPass: false), from: current, reason: .newVideo, fade: allowed.crossfade,
+                situation: situation)
         }
-        let candidates = modeCandidates(situation.eligible, mode: situation.mode, appearance: situation.appearance)
-        let isOffMode = !candidates.contains { $0.name == current.name }
+        let candidates = situation.candidates
         let reason: SwitchReason
-        if isOffMode && situation.visibility != .visible {
+        if !situation.isPreferred(current) && situation.visibility != .visible {
             reason = .modeChange
         } else if isDwellDone {
             reason = situation.visibility == .visible ? .visibleFallback : .dwell
@@ -223,10 +236,12 @@ struct RotationState {
             let hasOthers = candidates.contains { $0.name != current.name }
             return hasOthers && !allowsJump ? .waitingForUnseen : .stay
         }
-        return commit(pick.video, from: current, reason: reason, fade: allowed.crossfade, startsPass: pick.startsPass)
+        return commit(pick, from: current, reason: reason, fade: allowed.crossfade, situation: situation)
     }
 
-    private var isAtDesk: Bool { !(desk.areScreensAsleep || desk.isLocked || desk.isSessionInactive) }
+    private func nextNewVideo(in situation: RotationSituation) -> EligibleVideo? {
+        pendingNew.first.flatMap(situation.eligible(named:))
+    }
 
     private func minimumDwell(for state: VisibilityState) -> TimeInterval {
         allowedTransition(for: state).minimumDwell * dwellScale
@@ -250,11 +265,12 @@ struct RotationState {
     private mutating func startRotation(
         _ situation: RotationSituation, using rng: inout some RandomNumberGenerator
     ) -> RotationOutcome {
-        let candidates = modeCandidates(situation.eligible, mode: situation.mode, appearance: situation.appearance)
-        let next = pendingNew.first.flatMap { name in situation.eligible.first { $0.name == name } }
-            ?? candidates.randomElement(using: &rng)
-        guard let next else { return .stay }
-        return commit(next, from: nil, reason: .firstVideo, fade: Crossfade.quickDuration, startsPass: true)
+        guard let next = nextNewVideo(in: situation) ?? situation.candidates.randomElement(using: &rng) else {
+            return .stay
+        }
+        return commit(
+            (next, startsPass: true), from: nil, reason: .firstVideo, fade: Crossfade.quickDuration,
+            situation: situation)
     }
 
     /// The Current video left the Rotation: switch at once, whatever the brightness, since the Poster covers the gap.
@@ -262,28 +278,28 @@ struct RotationState {
         _ removed: EligibleVideo, _ situation: RotationSituation, using rng: inout some RandomNumberGenerator
     ) -> RotationOutcome {
         current = nil
-        let candidates = modeCandidates(situation.eligible, mode: situation.mode, appearance: situation.appearance)
-        let newVideo = pendingNew.first.flatMap { name in situation.eligible.first { $0.name == name } }
-        let pick = newVideo.map { (video: $0, startsPass: false) }
-            ?? pickNext(from: removed, candidates: candidates, played: played, allowsBigJump: true, using: &rng)
+        let pick = nextNewVideo(in: situation).map { (video: $0, startsPass: false) }
+            ?? pickNext(
+                from: removed, candidates: situation.candidates, played: played, allowsBigJump: true, using: &rng)
         guard let pick else { return .stay }
         return commit(
-            pick.video, from: removed, reason: .currentRemoved, fade: Crossfade.quickDuration,
-            startsPass: pick.startsPass)
+            pick, from: removed, reason: .currentRemoved, fade: Crossfade.quickDuration, situation: situation)
     }
 
     private mutating func commit(
-        _ next: EligibleVideo,
+        _ pick: (video: EligibleVideo, startsPass: Bool),
         from previous: EligibleVideo?,
         reason: SwitchReason,
         fade: TimeInterval,
-        startsPass: Bool
+        situation: RotationSituation
     ) -> RotationOutcome {
-        if startsPass { played = [] }
+        let next = pick.video
+        if pick.startsPass { played = [] }
         played.insert(next.name)
         pendingNew.removeAll { $0 == next.name }
         current = next
         dwell.restart()
-        return .switchTo(RotationSwitch(from: previous, to: next, reason: reason, fade: fade))
+        return .switchTo(RotationSwitch(
+            from: previous, to: next, reason: reason, fade: fade, isDeferred: situation.isPowerSaving))
     }
 }
