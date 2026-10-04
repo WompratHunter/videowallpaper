@@ -64,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func connectRotation() {
-        rotation.eligibleVideos = { [weak self] in self?.library.eligibleVideos() ?? [] }
+        rotation.eligibleVideos = { [weak self] in self?.library.eligibleVideos ?? [] }
         rotation.visibility = { [weak self] in self?.visibility.state ?? .visible }
         rotation.checkVeil = { [weak self] in self?.visibility.checkVeil() ?? .visible }
         rotation.isPowerSaving = { ProcessInfo.processInfo.isLowPowerModeEnabled }

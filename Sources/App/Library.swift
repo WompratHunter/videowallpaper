@@ -35,19 +35,22 @@ final class Library {
     }
 
     /// Removes the legacy Poster, loads the Analysis cache, seeds the settled videos, starts watching the folder and
-    /// analysing. Call once at launch, after setting `isPowerSaving` and before the first `eligibleVideos()`.
+    /// analysing. Call once at launch, after setting `isPowerSaving` and before the first `eligibleVideos`.
     func start() {
         removeLegacyPoster()
         analyses.loadCache()
         startFolderWatch()
-        eligible = eligibleVideos()
+        eligible = listEligibleVideos()
         logVerdicts()
         queueAnalysis()
     }
 
+    /// The eligible videos as of the last settle check or Analysis, so reading them on every tick lists nothing.
+    var eligibleVideos: [EligibleVideo] { eligible }
+
     /// Settled videos whose Analysis is known and which aren't Excluded, with their mean luminance. The folder is
     /// listed again so a just-deleted or replaced file is skipped in the gap before the next settle check.
-    func eligibleVideos() -> [EligibleVideo] {
+    private func listEligibleVideos() -> [EligibleVideo] {
         let present = Self.videoSnapshot(of: directory)
         let settled = settler.ready.filter { present[$0.key] != nil }
         var analysed: [String: Analysis] = [:]
@@ -80,7 +83,7 @@ extension Library {
     /// After a settle change or a new Analysis: tells the player only when the eligible set changed.
     private func eligibilityMayHaveChanged(cause: String) {
         logVerdicts()
-        let now = eligibleVideos()
+        let now = listEligibleVideos()
         guard now != eligible else { return }
         eligible = now
         Log.write(cause, "eligible videos=\(now.count)")
