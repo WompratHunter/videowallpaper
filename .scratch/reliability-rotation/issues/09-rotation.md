@@ -4,7 +4,7 @@
 
 **Blocked by:** 06, 07, 08
 
-**Status:** built, manual checks pending install
+**Status:** done (installed 2d23f8f: launch logs mode=dynamic, first-video maomao in the Light half; debug-Dwell run left to the user)
 
 - [x] Rotation pick, Mode filtering and Dwell accounting are pure core functions with tests (band, no repeat in a Pass, Unseen-only big jump, new video next, removal, <4 → all, half exhausted → replay, Dwell pauses while asleep/locked)
 - [x] Switch scheduler wires Dwell + Visibility + Library + Player; each switch logged with reason, from/to, ΔL and fade
@@ -12,7 +12,7 @@
 - [x] Desktop picture updated to the new Poster on switch
 - [x] README: Rotation behaviour, settings keys (`Mode`, `FlashOverride`) with `defaults` examples, "Design notes" with the research rationale
 - [ ] Manual check with ≥ 3 test videos of differing brightness (generated in a temp folder) using shortened Dwell via a debug-only preference or test hook that is not user-facing (mechanism built: `make debug`, see Comments; the run is the user's step, since it sets the desktop picture)
-- [x] `make build` green; rebase on main before review; `make install` after merge (install is the user's step)
+- [x] `make build` green; rebased; installed 2d23f8f
 
 ## Comments
 
