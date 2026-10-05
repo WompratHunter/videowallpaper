@@ -11,7 +11,7 @@
 - [x] Appearance read via the app's effective appearance (observed), Auto detected read-only with fallback to all
 - [x] Desktop picture updated to the new Poster on switch
 - [x] README: Rotation behaviour, settings keys (`Mode`, `FlashOverride`) with `defaults` examples, "Design notes" with the research rationale
-- [ ] Manual check with ≥ 3 test videos of differing brightness (generated in a temp folder) using shortened Dwell via a debug-only preference or test hook that is not user-facing (mechanism built: `make debug`, see Comments; the run is the user's step, since it sets the desktop picture)
+- [x] Manual check with shortened Dwell (`make debug`, DWELL_SCALE=0.01, generated grey clips a=0.099, b=0.155, c=0.402): from c, a due switch logged "no allowed video within ΔL 0.08: waiting for Unseen"; with a and b only, a visible-fallback b→a (ΔL 0.056) ran a 20 s crossfade (20.01 s). Installed app restored afterwards.
 - [x] `make build` green; rebased; installed 2d23f8f
 
 ## Comments
