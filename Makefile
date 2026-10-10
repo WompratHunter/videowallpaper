@@ -12,7 +12,8 @@ VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 SUPPORT   := $(HOME)/Library/Application Support/VideoWallpaper
 BUNDLE_ID := com.evanscott.videowallpaper
 # A stable signature keeps the Location Services grant across reinstalls; ad-hoc ("-") would change every build.
-SIGN_ID   := $(or $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $$2; exit}'),-)
+# Recursive (=), so only `install` looks the identity up.
+SIGN_ID    = $(or $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $$2; exit}'),-)
 
 .PHONY: install uninstall build lint test smoke debug
 
@@ -21,7 +22,11 @@ install: build
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(VIDEO_DIR) $(HOME)/Library/Logs
 	@cp Info.plist $(APP)/Contents/Info.plist
 	@install -m 755 $(BUILD_DIR)/videowallpaper $(BINARY)
-	@codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "$(APP)"
+	@# The first signing asks for keychain access: choose Always Allow. If the key is refused, sign ad-hoc so the
+	@# install still completes (Location Services may then ask again after a later reinstall).
+	@codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "$(APP)" \
+		|| { echo "! Could not sign with $(SIGN_ID); signing ad-hoc"; \
+		     codesign --force --sign - --identifier $(BUNDLE_ID) "$(APP)"; }
 	@sed 's|__HOME__|$(HOME)|g' $(PLIST_SRC) > $(PLIST_DST)
 	@launchctl unload $(PLIST_DST) 2>/dev/null || true
 	@launchctl load $(PLIST_DST)

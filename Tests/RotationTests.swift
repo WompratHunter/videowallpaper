@@ -10,6 +10,7 @@ func runRotationTests() {
     runDwellTests()
     runSchedulingTests()
     runLibraryChangeTests()
+    runDaylightTargetTests()
 }
 
 /// SplitMix64: a deterministic RNG so every pick in these tests is reproducible.
@@ -270,7 +271,6 @@ private func runBrightnessJumpTests() {
     tick(&power, from: 0, until: oneHour)
     checkEqual(power.decide(situation(at: oneHour, userVideos, .unseen, isPowerSaving: true), using: &rng), .stay)
 
-    runDaylightTargetTests()
 }
 
 // MARK: - Folder changes

@@ -72,10 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rotation.modeSetting = { UserDefaults.standard.string(forKey: "Mode") }
         // The global flag is undocumented: absent reads as off, so the default Mode falls back to `all`.
         rotation.isAutoAppearance = { UserDefaults.standard.bool(forKey: "AppleInterfaceStyleSwitchesAutomatically") }
-        rotation.location = { [weak self] in self?.daylightLocation.current }
+        rotation.location = { [weak self] in self?.daylightLocation.resolved() }
         rotation.clock = DaylightLocation.now
-        // Location Services is asked for only once `dynamic` is in effect.
-        rotation.onDynamicMode = { [weak self] in self?.daylightLocation.activate() }
+        // Location Services is asked for only once `dynamic` aims at Daylight.
+        rotation.onDaylightWanted = { [weak self] in self?.daylightLocation.activate() }
         rotation.onSwitch = { [weak self] video, fade in self?.player.play(video, fade: fade) }
         // An Unseen or Veiled moment is a switch point, acted on at once rather than at the next tick.
         visibility.onChange = { [weak self] _ in self?.rotation.evaluate(cause: "visibility") }

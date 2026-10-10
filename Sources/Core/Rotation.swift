@@ -263,51 +263,6 @@ struct RotationState {
         !isCurrentNew && !situation.isPreferred(current)
     }
 
-    /// Near the Target brightness in `dynamic`, else within the band among the Mode's candidates.
-    private func pick(
-        from current: EligibleVideo?,
-        _ situation: RotationSituation,
-        allowsBigJump: Bool,
-        using rng: inout some RandomNumberGenerator
-    ) -> (video: EligibleVideo, startsPass: Bool)? {
-        guard situation.followsDaylight else {
-            return pickNext(
-                from: current, candidates: situation.candidates, played: played, allowsBigJump: allowsBigJump,
-                using: &rng)
-        }
-        return pickNearTarget(from: current, situation, allowsBigJump: allowsBigJump, using: &rng)
-    }
-
-    /// `dynamic`: random among unplayed-this-Pass videos within the target window; else the video nearest the Target
-    /// brightness, unplayed first, which may replay one rather than leave the target (a small library has wide
-    /// gaps). Without `allowsBigJump`, only videos within the band of `current` and no further from the target
-    /// count, so a Visible or Veiled switch only ever walks toward the target. Nil when nothing is allowed.
-    private func pickNearTarget(
-        from current: EligibleVideo?,
-        _ situation: RotationSituation,
-        allowsBigJump: Bool,
-        using rng: inout some RandomNumberGenerator
-    ) -> (video: EligibleVideo, startsPass: Bool)? {
-        let ranks = brightnessRanks(situation.eligible)
-        let distance = { (video: EligibleVideo) in abs((ranks[video.name] ?? 0.5) - situation.daylight) }
-        var others = situation.eligible.filter { $0.name != current?.name }
-        var unplayed = Set(others.map(\.name)).subtracting(played)
-        let startsPass = unplayed.isEmpty
-        if startsPass { unplayed = Set(others.map(\.name)) }
-        if let current, !allowsBigJump {
-            let limit = ranks[current.name].map { abs($0 - situation.daylight) } ?? .infinity
-            others = others.filter { isWithinBand($0, current) && distance($0) <= limit + RotationRules.tolerance }
-        }
-        let window = RotationRules.targetWindow + RotationRules.tolerance
-        let near = others.filter { unplayed.contains($0.name) && distance($0) <= window }
-        if let pick = near.randomElement(using: &rng) { return (pick, startsPass) }
-        let nearest = others.min {
-            (distance($0), unplayed.contains($0.name) ? 0 : 1, $0.name)
-                < (distance($1), unplayed.contains($1.name) ? 0 : 1, $1.name)
-        }
-        return nearest.map { ($0, startsPass) }
-    }
-
     private func nextNewVideo(in situation: RotationSituation) -> EligibleVideo? {
         pendingNew.first.flatMap(situation.eligible(named:))
     }
@@ -373,5 +328,56 @@ struct RotationState {
         dwell.restart()
         return .switchTo(RotationSwitch(
             from: previous, to: next, reason: reason, fade: fade, isDeferred: situation.isPowerSaving))
+    }
+}
+
+// MARK: - Pick
+
+extension RotationState {
+    /// Near the Target brightness in `dynamic`, else within the band among the Mode's candidates.
+    private func pick(
+        from current: EligibleVideo?,
+        _ situation: RotationSituation,
+        allowsBigJump: Bool,
+        using rng: inout some RandomNumberGenerator
+    ) -> (video: EligibleVideo, startsPass: Bool)? {
+        guard situation.followsDaylight else {
+            return pickNext(
+                from: current, candidates: situation.candidates, played: played, allowsBigJump: allowsBigJump,
+                using: &rng)
+        }
+        return pickNearTarget(from: current, situation, allowsBigJump: allowsBigJump, using: &rng)
+    }
+
+    /// `dynamic`: random among unplayed-this-Pass videos within the target window; else the unplayed video nearest
+    /// the Target brightness, unless it would itself be off target (a small library has wide gaps), in which case the
+    /// nearest video plays again. Without `allowsBigJump`, only videos within the band of `current` count, and from
+    /// outside the window none further from the target, so a Visible or Veiled switch walks toward it.
+    private func pickNearTarget(
+        from current: EligibleVideo?,
+        _ situation: RotationSituation,
+        allowsBigJump: Bool,
+        using rng: inout some RandomNumberGenerator
+    ) -> (video: EligibleVideo, startsPass: Bool)? {
+        let ranks = brightnessRanks(situation.eligible)
+        let distance = { (video: EligibleVideo) in abs((ranks[video.name] ?? 0.5) - situation.daylight) }
+        var others = situation.eligible.filter { $0.name != current?.name }
+        var unplayed = Set(others.map(\.name)).subtracting(played)
+        let startsPass = unplayed.isEmpty
+        if startsPass { unplayed = Set(others.map(\.name)) }
+        let window = RotationRules.targetWindow + RotationRules.tolerance
+        if let current, !allowsBigJump {
+            let fromCurrent = ranks[current.name].map { abs($0 - situation.daylight) } ?? .infinity
+            let limit = max(fromCurrent + RotationRules.tolerance, window)
+            others = others.filter { isWithinBand($0, current) && distance($0) <= limit }
+        }
+        let fresh = others.filter { unplayed.contains($0.name) }
+        if let pick = fresh.filter({ distance($0) <= window }).randomElement(using: &rng) { return (pick, startsPass) }
+        let byDistance = { (a: EligibleVideo, b: EligibleVideo) in (distance(a), a.name) < (distance(b), b.name) }
+        let reach = RotationRules.offTarget + RotationRules.tolerance
+        if let nearestFresh = fresh.min(by: byDistance), distance(nearestFresh) <= reach {
+            return (nearestFresh, startsPass)
+        }
+        return others.min(by: byDistance).map { ($0, startsPass) }
     }
 }

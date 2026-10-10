@@ -112,17 +112,31 @@ private func runLocationTests() {
     near(roundedForPrivacy(Coordinates(latitude: 40.712_84, longitude: -74.006_01)),
          Coordinates(latitude: 40.7, longitude: -74.0))
 
-    // A fresh fix wins; then the cached fix, if it was taken in the current time zone; then the time zone's city.
-    let fix = Coordinates(latitude: 42.36, longitude: -71.06)
-    let cached = LocationCache(coordinates: Coordinates(latitude: 42.4, longitude: -71.1), timeZone: "America/New_York")
-    let fromFix = resolveLocation(fix: fix, cached: cached, timeZone: "America/New_York", zones: zones)
+    // A fresh fix wins; then the cached fix; each only if taken in the current time zone; then the time zone's city.
+    let boston = "America/New_York"
+    let fix = LocationCache(coordinates: Coordinates(latitude: 42.36, longitude: -71.06), timeZone: boston)
+    let cached = LocationCache(coordinates: Coordinates(latitude: 42.4, longitude: -71.1), timeZone: boston)
+    let fromFix = resolveLocation(fix: fix, cached: cached, timeZone: boston, zones: zones)
     near(fromFix?.coordinates, Coordinates(latitude: 42.4, longitude: -71.1))
     checkEqual(fromFix?.source, .fix)
-    let fromCache = resolveLocation(fix: nil, cached: cached, timeZone: "America/New_York", zones: zones)
+    let fromCache = resolveLocation(fix: nil, cached: cached, timeZone: boston, zones: zones)
     near(fromCache?.coordinates, cached.coordinates)
     checkEqual(fromCache?.source, .cache)
-    let travelled = resolveLocation(fix: nil, cached: cached, timeZone: "Europe/London", zones: zones)
+    // After travel, neither this run's fix nor the cache is trusted until a new fix arrives.
+    let travelled = resolveLocation(fix: fix, cached: cached, timeZone: "Europe/London", zones: zones)
     near(travelled?.coordinates, Coordinates(latitude: 51.508_33, longitude: -0.125_28))
     checkEqual(travelled?.source, .timeZone)
     check(resolveLocation(fix: nil, cached: nil, timeZone: "UTC", zones: zones) == nil, "UTC has no place")
+
+    // Daylight with a place comes from the sun; with none, the appearance stands in (Dark as night, Light as day).
+    let noonInNewYork = ResolvedLocation(coordinates: newYork, source: .cache)
+    let sunlit = currentDaylight(at: utc("2026-12-21T17:00:00Z"), location: noonInNewYork, appearance: .dark)
+    checkEqual(sunlit.level, 1)
+    checkEqual(sunlit.basis, .sun(.cache))
+    checkEqual(currentDaylight(at: utc("2026-12-21T17:00:00Z"), location: nil, appearance: .dark).level, 0)
+    let light = currentDaylight(at: utc("2026-12-21T05:00:00Z"), location: nil, appearance: .light)
+    checkEqual(light.level, 1)
+    checkEqual(light.basis, .appearance)
+    checkEqual(light.basis.description, "appearance")
+    checkEqual(DaylightBasis.sun(.timeZone).description, "timezone")
 }

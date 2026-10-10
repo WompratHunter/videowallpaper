@@ -87,14 +87,46 @@ func roundedForPrivacy(_ place: Coordinates) -> Coordinates {
         latitude: (place.latitude * 10).rounded() / 10, longitude: (place.longitude * 10).rounded() / 10)
 }
 
-/// Where Daylight is computed for: a fresh fix, else the cached fix if it was taken in the current time zone (it
-/// may be stale after travel), else the time zone's reference city. Nil only for a zone with no place, e.g. UTC.
+struct ResolvedLocation: Equatable {
+    let coordinates: Coordinates
+    let source: LocationSource
+}
+
+/// Where Daylight is computed for: this run's fix, else the cached fix, each only if taken in the current time zone
+/// (after travel both may be far away until a new fix arrives), else the time zone's reference city. Nil only for a
+/// zone with no place, e.g. UTC.
 func resolveLocation(
-    fix: Coordinates?, cached: LocationCache?, timeZone: String, zones: [String: Coordinates]
-) -> (coordinates: Coordinates, source: LocationSource)? {
-    if let fix { return (roundedForPrivacy(fix), .fix) }
-    if let cached, cached.timeZone == timeZone { return (cached.coordinates, .cache) }
-    return zones[timeZone].map { ($0, .timeZone) }
+    fix: LocationCache?, cached: LocationCache?, timeZone: String, zones: [String: Coordinates]
+) -> ResolvedLocation? {
+    if let fix, fix.timeZone == timeZone {
+        return ResolvedLocation(coordinates: roundedForPrivacy(fix.coordinates), source: .fix)
+    }
+    if let cached, cached.timeZone == timeZone {
+        return ResolvedLocation(coordinates: cached.coordinates, source: .cache)
+    }
+    return zones[timeZone].map { ResolvedLocation(coordinates: $0, source: .timeZone) }
+}
+
+/// What Daylight was worked out from: the sun at a location, or the appearance when there is no place at all.
+enum DaylightBasis: Equatable, CustomStringConvertible {
+    case sun(LocationSource)
+    case appearance
+
+    var description: String {
+        switch self {
+        case .sun(let source): return source.rawValue
+        case .appearance: return "appearance"
+        }
+    }
+}
+
+/// Daylight now. With no place (a time zone like UTC and no fix) the appearance stands in: Dark as night, Light as
+/// day, so `dynamic` still means something.
+func currentDaylight(
+    at date: Date, location: ResolvedLocation?, appearance: Appearance
+) -> (level: Double, basis: DaylightBasis) {
+    guard let location else { return (appearance == .dark ? 0 : 1, .appearance) }
+    return (daylightLevel(at: date, at: location.coordinates), .sun(location.source))
 }
 
 /// The time zone identifiers in `/usr/share/zoneinfo/zone.tab` with their reference city's coordinates.

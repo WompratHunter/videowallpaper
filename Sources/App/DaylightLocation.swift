@@ -10,10 +10,11 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let cacheFile: URL
     private let zones: [String: Coordinates]
-    private var fix: Coordinates?
+    /// This run's fix, with the time zone it was taken in.
+    private var fix: LocationCache?
     private var cached: LocationCache?
     private var isActive = false
-    private var loggedSource: String?
+    private var loggedLocation: String?
 
     init(cacheFile: URL, zoneTab: URL = URL(fileURLWithPath: "/usr/share/zoneinfo/zone.tab")) {
         self.cacheFile = cacheFile
@@ -23,22 +24,21 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyKilometer
     }
 
-    /// The coordinates to use now and where they came from; nil only in a time zone with no place (e.g. UTC).
-    var current: (coordinates: Coordinates, source: LocationSource)? {
-        if let forced = Self.debugLocation { return (forced, .fix) }
-        let resolved = resolveLocation(
-            fix: fix, cached: cached, timeZone: TimeZone.current.identifier, zones: zones)
-        let description = resolved.map { "source=\($0.source.rawValue) at=\(Self.describe($0.coordinates))" }
+    /// Resolves the location to use now (logged when it changes); nil only in a time zone with no place (e.g. UTC).
+    func resolved() -> ResolvedLocation? {
+        if let forced = Self.debugLocation { return ResolvedLocation(coordinates: forced, source: .fix) }
+        let location = resolveLocation(fix: fix, cached: cached, timeZone: TimeZone.current.identifier, zones: zones)
+        let description = location.map { "source=\($0.source.rawValue) at=\(Self.describe($0.coordinates))" }
             ?? "source=none timezone=\(TimeZone.current.identifier)"
-        if description != loggedSource {
+        if description != loggedLocation {
             Log.write("location", description)
-            loggedSource = description
+            loggedLocation = description
         }
-        return resolved
+        return location
     }
 
-    /// `dynamic` is in effect: asks for permission the first time (never again once denied), then for a fix.
-    /// Called on every decision in `dynamic`; only the first call does anything.
+    /// Asks for permission the first time (macOS never asks again once denied), then for a fix. Idempotent, so the
+    /// scheduler can call it on every decision that wants Daylight.
     func activate() {
         guard !isActive else { return }
         isActive = true
@@ -46,10 +46,9 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
         requestFix(cause: "launch")
     }
 
-    /// Wake or a time zone change: a fix taken elsewhere may be stale, so ask again.
+    /// Wake or a time zone change: ask for a new fix. A fix from another time zone is already ignored by Core.
     func refresh(cause: String) {
         guard isActive else { return }
-        if cause == "timezone" { fix = nil }
         requestFix(cause: cause)
     }
 
@@ -77,8 +76,8 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         let place = roundedForPrivacy(Coordinates(
             latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
-        fix = place
         let record = LocationCache(coordinates: place, timeZone: TimeZone.current.identifier)
+        fix = record
         cached = record
         Log.write("location", "fix at=\(Self.describe(place))")
         do {

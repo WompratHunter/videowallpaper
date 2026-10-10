@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - Rotation tests: Daylight
-// Part of the Rotation suite (run from `runBrightnessJumpTests`), split out for length. Ranks of the user's four
+// Part of the Rotation suite (run from `runRotationTests`), split out for length. Ranks of the user's four
 // videos: ff7 0, lucyna a third, maomao two thirds, capybara 1.
 
 /// `dynamic` in the dark, at Daylight 0.
@@ -34,7 +34,7 @@ func runDaylightTargetTests() {
     checkEqual(state.decide(night(20 + twentyMinutes, .veiled), using: &rng), .waitingForUnseen)
     // Unseen: the darkest video, a big jump.
     checkEqual(switched(state.decide(night(20 + twentyMinutes, .unseen), using: &rng))?.to, ff7)
-    // Nothing else near the target is unplayed: lucyna, the nearest, plays again rather than a bright video.
+    // The only unplayed video (capybara) would itself be off target: lucyna, the nearest, plays again instead.
     tick(&state, from: 20 + twentyMinutes, until: 20 + 2 * twentyMinutes)
     checkEqual(switched(state.decide(night(20 + 2 * twentyMinutes, .unseen), using: &rng))?.to, lucyna)
     runDaylightEdgeTests()
@@ -57,6 +57,26 @@ private func runDaylightEdgeTests() {
             situation(at: 5, userVideos, .unseen, mode: .dynamic, daylight: 0.5), using: &seeded))?.to
         check(pick == lucyna || pick == maomao, "dusk picks a middle video, got \(pick?.name ?? "none")")
     }
+
+    // An empty window: the nearest unplayed video within reach (ff7) beats replaying a nearer played one (lucyna).
+    var evening = playing(lucyna, mode: .dynamic, daylight: 1.0 / 3)
+    tick(&evening, from: 0, until: twentyMinutes)
+    let dynamicAt = { (now: TimeInterval, target: Double) in
+        situation(at: now, userVideos, .unseen, mode: .dynamic, daylight: target)
+    }
+    checkEqual(switched(evening.decide(dynamicAt(twentyMinutes, 2.0 / 3), using: &rng))?.to, maomao)
+    tick(&evening, from: twentyMinutes, until: 2 * twentyMinutes)
+    checkEqual(switched(evening.decide(dynamicAt(2 * twentyMinutes, 0.2), using: &rng))?.to, ff7)
+
+    // Visible, already inside the window: another video in the window may play though a little further from the
+    // target (mid at 0.15 from it, lucyna at 0.1); walking toward the target only binds outside the window.
+    let five = userVideos + [video("mid.mp4", 0.17)]
+    var settled = playing(lucyna, among: five, mode: .dynamic, daylight: 0.25)
+    tick(&settled, from: 0, until: 60 * 60, five)
+    let variety = switched(settled.decide(
+        situation(at: 60 * 60, five, .visible, mode: .dynamic, daylight: 0.35), using: &rng))
+    checkEqual(variety?.to.name, "mid.mp4")
+    checkEqual(variety?.reason, .visibleFallback)
 
     // Fewer than four videos: dynamic acts as all, so night doesn't force a switch.
     let three = [capybara, lucyna, maomao]

@@ -17,12 +17,12 @@ final class RotationScheduler {
     var modeSetting: () -> String? = { nil }
     /// Whether the system appearance switches automatically (read only), which makes `dynamic` the default Mode.
     var isAutoAppearance: () -> Bool = { false }
-    /// Where Daylight is computed for, and where that came from.
-    var location: () -> (coordinates: Coordinates, source: LocationSource)? = { nil }
+    /// Where Daylight is computed for; asked only while `dynamic` aims at the Target brightness.
+    var location: () -> ResolvedLocation? = { nil }
     /// The time Daylight is computed for.
     var clock: () -> Date = { Date() }
-    /// `dynamic` is in effect, so the location is wanted: called on every such decision.
-    var onDynamicMode: () -> Void = {}
+    /// Daylight is wanted: lets the wiring ask for Location Services only then, never for `all`, `light` or `dark`.
+    var onDaylightWanted: () -> Void = {}
 
     private let directory: URL
     private var state: RotationState
@@ -70,12 +70,16 @@ final class RotationScheduler {
         guard !isDeciding else { return nil }
         isDeciding = true
         defer { isDeciding = false }
-        let mode = currentMode()
-        if mode == .dynamic { onDynamicMode() }
-        let daylight = currentDaylight()
         var situation = RotationSituation(
-            now: now, eligible: eligibleVideos(), visibility: visibility(), mode: mode, daylight: daylight.level,
+            now: now, eligible: eligibleVideos(), visibility: visibility(), mode: currentMode(), daylight: 0,
             isPowerSaving: isPowerSaving())
+        var basis: DaylightBasis?
+        if situation.followsDaylight {
+            onDaylightWanted()
+            let daylight = currentDaylight(at: clock(), location: location(), appearance: Self.currentAppearance())
+            situation.daylight = daylight.level
+            basis = daylight.basis
+        }
         if sampleVeil && state.isSwitchPointNear(situation) { situation.visibility = checkVeil() }
         let dwell = state.dwell.elapsed
         switch state.decide(situation, using: &rng) {
@@ -90,7 +94,7 @@ final class RotationScheduler {
             return nil
         case .switchTo(let change):
             isWaitingForUnseen = false
-            log(change, on: cause, situation: situation, dwell: dwell, daylightSource: daylight.source)
+            log(change, on: cause, situation: situation, dwell: dwell, daylightBasis: basis)
             return change
         }
     }
@@ -100,14 +104,18 @@ final class RotationScheduler {
         on cause: String,
         situation: RotationSituation,
         dwell: TimeInterval,
-        daylightSource: String
+        daylightBasis: DaylightBasis?
     ) {
         let deltaL = change.deltaL.map { String(format: "%.3f", $0) } ?? "n/a"
-        let rank = brightnessRanks(situation.eligible)[change.to.name].map { String(format: "%.2f", $0) } ?? "n/a"
+        // Daylight is the Target brightness; the new video's rank shows how close the pick landed.
+        let daylight = daylightBasis.map { basis in
+            let rank = brightnessRanks(situation.eligible)[change.to.name] ?? .nan
+            return String(format: "daylight=%.2f target=%.2f to-rank=%.2f daylight-source=%@ ",
+                          situation.daylight, situation.daylight, rank, basis.description)
+        } ?? ""
         Log.write("rotation", "switch reason=\(change.reason.rawValue) on=\(cause) "
             + "from=\(change.from?.name ?? "none") to=\(change.to.name) ΔL=\(deltaL) fade=\(Int(change.fade))s "
-            + "visibility=\(situation.visibility.rawValue) mode=\(situation.mode.rawValue) "
-            + String(format: "daylight=%.2f rank=%@ location=%@ ", situation.daylight, rank, daylightSource)
+            + "visibility=\(situation.visibility.rawValue) mode=\(situation.mode.rawValue) " + daylight
             + "dwell=\(Int(dwell / 60))m"
             + (change.isDeferred ? " (Low Power Mode: plays when it ends)" : ""))
     }
@@ -127,15 +135,6 @@ extension RotationScheduler {
             loggedMode = description
         }
         return mode
-    }
-
-    /// Daylight from the sun where the Mac is. With no place at all (a time zone like UTC and no fix), the
-    /// appearance stands in: Dark as night, Light as day.
-    private func currentDaylight() -> (level: Double, source: String) {
-        if let place = location() {
-            return (daylightLevel(at: clock(), at: place.coordinates), place.source.rawValue)
-        }
-        return (Self.currentAppearance() == .dark ? 0 : 1, "appearance")
     }
 
     private static func currentAppearance() -> Appearance {
