@@ -13,7 +13,7 @@ func runRotationTests() {
 }
 
 /// SplitMix64: a deterministic RNG so every pick in these tests is reproducible.
-private struct SeededGenerator: RandomNumberGenerator {
+struct SeededGenerator: RandomNumberGenerator {
     var state: UInt64
 
     mutating func next() -> UInt64 {
@@ -25,59 +25,59 @@ private struct SeededGenerator: RandomNumberGenerator {
     }
 }
 
-private func video(_ name: String, _ luminance: Double, modified: TimeInterval = 0) -> EligibleVideo {
+func video(_ name: String, _ luminance: Double, modified: TimeInterval = 0) -> EligibleVideo {
     EligibleVideo(name: name, modified: Date(timeIntervalSince1970: modified), meanLuminance: luminance)
 }
 
-private let capybara = video("capybara.mp4", 0.299)
-private let ff7 = video("ff7.mp4", 0.037)
-private let lucyna = video("lucyna.mp4", 0.161)
-private let maomao = video("maomao.mp4", 0.177)
-private let userVideos = [capybara, ff7, lucyna, maomao]
+let capybara = video("capybara.mp4", 0.299)
+let ff7 = video("ff7.mp4", 0.037)
+let lucyna = video("lucyna.mp4", 0.161)
+let maomao = video("maomao.mp4", 0.177)
+let userVideos = [capybara, ff7, lucyna, maomao]
 
-private func names(_ videos: [EligibleVideo]) -> [String] { videos.map(\.name).sorted() }
+func names(_ videos: [EligibleVideo]) -> [String] { videos.map(\.name).sorted() }
 
-private func situation(
+func situation(
     at now: TimeInterval,
     _ eligible: [EligibleVideo] = userVideos,
     _ visibility: VisibilityState = .visible,
     mode: RotationMode = .all,
-    appearance: Appearance = .dark,
+    daylight: Double = 0,
     isPowerSaving: Bool = false
 ) -> RotationSituation {
     RotationSituation(
-        now: now, eligible: eligible, visibility: visibility, mode: mode, appearance: appearance,
+        now: now, eligible: eligible, visibility: visibility, mode: mode, daylight: daylight,
         isPowerSaving: isPowerSaving)
 }
 
-private func switched(_ outcome: RotationOutcome) -> RotationSwitch? {
+func switched(_ outcome: RotationOutcome) -> RotationSwitch? {
     if case .switchTo(let change) = outcome { return change }
     return nil
 }
 
 /// A state already playing `start`, its launch pick, at time 0.
-private func playing(
+func playing(
     _ start: EligibleVideo,
     among eligible: [EligibleVideo] = userVideos,
     alsoPresent: [String] = [],
     mode: RotationMode = .all,
-    appearance: Appearance = .dark
+    daylight: Double = 0
 ) -> RotationState {
     let state = RotationState(present: Set(eligible.map(\.name) + alsoPresent))
     for seed in UInt64(0)..<200 {
         var attempt = state
         var rng = SeededGenerator(state: seed)
-        let launch = situation(at: 0, eligible, mode: mode, appearance: appearance)
+        let launch = situation(at: 0, eligible, mode: mode, daylight: daylight)
         if switched(attempt.decide(launch, using: &rng))?.to == start { return attempt }
     }
     fatalError("no seed starts on \(start.name)")
 }
 
-private let twentyMinutes: TimeInterval = 20 * 60
+let twentyMinutes: TimeInterval = 20 * 60
 private let oneHour: TimeInterval = 60 * 60
 
 /// Visible ticks at the desk every 5 s, short of `end`: Dwell grows, and the decision at `end` is the caller's.
-private func tick(
+func tick(
     _ state: inout RotationState,
     from start: TimeInterval,
     until end: TimeInterval,
@@ -101,19 +101,22 @@ private func runModeTests() {
     checkEqual(rotationMode(setting: "sepia", isAutoAppearance: true), .dynamic)
 
     // The user's median is 0.169: ff7 and lucyna are the darker half, maomao and capybara the brighter.
-    checkEqual(names(modeCandidates(userVideos, mode: .dynamic, appearance: .dark)), ["ff7.mp4", "lucyna.mp4"])
-    checkEqual(names(modeCandidates(userVideos, mode: .dynamic, appearance: .light)), ["capybara.mp4", "maomao.mp4"])
-    checkEqual(names(modeCandidates(userVideos, mode: .dark, appearance: .light)), ["ff7.mp4", "lucyna.mp4"])
-    checkEqual(names(modeCandidates(userVideos, mode: .light, appearance: .dark)), ["capybara.mp4", "maomao.mp4"])
-    checkEqual(names(modeCandidates(userVideos, mode: .all, appearance: .dark)), names(userVideos))
-    // Fewer than four: dynamic acts as all.
-    let three = [capybara, ff7, lucyna]
-    checkEqual(names(modeCandidates(three, mode: .dynamic, appearance: .dark)), names(three))
+    checkEqual(names(modeCandidates(userVideos, mode: .dark)), ["ff7.mp4", "lucyna.mp4"])
+    checkEqual(names(modeCandidates(userVideos, mode: .light)), ["capybara.mp4", "maomao.mp4"])
+    checkEqual(names(modeCandidates(userVideos, mode: .all)), names(userVideos))
+    // dynamic narrows by Daylight at the pick, not by halves.
+    checkEqual(names(modeCandidates(userVideos, mode: .dynamic)), names(userVideos))
     // An odd count puts the median video in both halves.
     let five = userVideos + [video("mid.mp4", 0.17)]
-    checkEqual(names(modeCandidates(five, mode: .dynamic, appearance: .dark)), ["ff7.mp4", "lucyna.mp4", "mid.mp4"])
-    checkEqual(
-        names(modeCandidates(five, mode: .dynamic, appearance: .light)), ["capybara.mp4", "maomao.mp4", "mid.mp4"])
+    checkEqual(names(modeCandidates(five, mode: .dark)), ["ff7.mp4", "lucyna.mp4", "mid.mp4"])
+    checkEqual(names(modeCandidates(five, mode: .light)), ["capybara.mp4", "maomao.mp4", "mid.mp4"])
+
+    // Brightness rank: darkest 0 to brightest 1, evenly spaced, whatever the luminance gaps.
+    let ranks = brightnessRanks(userVideos)
+    checkEqual(ranks["ff7.mp4"], 0)
+    checkEqual(ranks["capybara.mp4"], 1)
+    check(abs((ranks["lucyna.mp4"] ?? 0) - 1.0 / 3) < 1e-9 && abs((ranks["maomao.mp4"] ?? 0) - 2.0 / 3) < 1e-9,
+          "lucyna and maomao are a third and two thirds up")
 }
 
 // MARK: - Pick
@@ -267,52 +270,7 @@ private func runBrightnessJumpTests() {
     tick(&power, from: 0, until: oneHour)
     checkEqual(power.decide(situation(at: oneHour, userVideos, .unseen, isPowerSaving: true), using: &rng), .stay)
 
-    runAppearanceTests()
-}
-
-/// An appearance flip (or Mode change) leaving the Current video outside the preferred half switches at the next
-/// Unseen or Veiled moment, without waiting for Dwell.
-private func runAppearanceTests() {
-    var rng = SeededGenerator(state: 7)
-    var state = playing(maomao, mode: .dynamic, appearance: .light)
-    // Dark arrives: maomao is in the brighter half. Visible: it waits.
-    checkEqual(state.decide(situation(at: 10, mode: .dynamic, appearance: .dark), using: &rng), .stay)
-    check(state.isSwitchPointNear(situation(at: 10, mode: .dynamic, appearance: .dark)),
-          "an off-Mode video asks for Veiled sampling")
-    let flip = switched(state.decide(situation(at: 15, userVideos, .veiled, mode: .dynamic, appearance: .dark),
-                                     using: &rng))
-    checkEqual(flip?.reason, .modeChange)
-    checkEqual(flip?.to, lucyna)
-    // In the darker half the next Dwell switch can only reach ff7, a big jump: Unseen only.
-    tick(&state, from: 15, until: 15 + twentyMinutes)
-    let darkSituation = situation(at: 15 + twentyMinutes, userVideos, .veiled, mode: .dynamic, appearance: .dark)
-    checkEqual(state.decide(darkSituation, using: &rng), .waitingForUnseen)
-    var unseen = darkSituation
-    unseen.visibility = .unseen
-    checkEqual(switched(state.decide(unseen, using: &rng))?.to, ff7)
-    // The darker half is exhausted: a new Pass replays lucyna rather than leaving the half.
-    tick(&state, from: unseen.now, until: unseen.now + twentyMinutes)
-    unseen.now += twentyMinutes
-    let replay = switched(state.decide(unseen, using: &rng))
-    checkEqual(replay?.to, lucyna)
-
-    // Fewer than four videos: dynamic acts as all, so the Dark appearance doesn't force a switch.
-    let three = [capybara, lucyna, maomao]
-    var small = playing(capybara, among: three, mode: .dynamic)
-    checkEqual(small.decide(situation(at: 5, three, .unseen, mode: .dynamic, appearance: .dark), using: &rng), .stay)
-
-    // A newly added video plays whatever the Mode, and keeps its full Dwell though it's outside the preferred half.
-    var fresh = playing(lucyna, mode: .dynamic)
-    let brightNew = video("sunny.mp4", 0.2, modified: 100)
-    let withNew = userVideos + [brightNew]
-    let dark = { (now: TimeInterval, visibility: VisibilityState) in
-        situation(at: now, withNew, visibility, mode: .dynamic, appearance: .dark)
-    }
-    _ = fresh.decide(dark(5, .visible), using: &rng)
-    tick(&fresh, from: 5, until: twentyMinutes, withNew)
-    checkEqual(switched(fresh.decide(dark(twentyMinutes, .veiled), using: &rng))?.to, brightNew)
-    checkEqual(fresh.decide(dark(twentyMinutes + 60, .unseen), using: &rng), .stay)
-    check(!fresh.isSwitchPointNear(dark(twentyMinutes + 60, .visible)), "a new video's Dwell isn't cut short")
+    runDaylightTargetTests()
 }
 
 // MARK: - Folder changes

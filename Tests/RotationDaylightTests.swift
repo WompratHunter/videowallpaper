@@ -1,0 +1,75 @@
+import Foundation
+
+// MARK: - Rotation tests: Daylight
+// Part of the Rotation suite (run from `runBrightnessJumpTests`), split out for length. Ranks of the user's four
+// videos: ff7 0, lucyna a third, maomao two thirds, capybara 1.
+
+/// `dynamic` in the dark, at Daylight 0.
+private func night(
+    _ now: TimeInterval, _ visibility: VisibilityState, _ eligible: [EligibleVideo] = userVideos
+) -> RotationSituation {
+    situation(at: now, eligible, visibility, mode: .dynamic, daylight: 0)
+}
+
+/// `dynamic` aims at the Target brightness (Daylight as a rank). A Current video far from it switches at the next
+/// Unseen or Veiled moment without waiting for Dwell; while anyone can see, the pick only walks toward the target.
+func runDaylightTargetTests() {
+    var rng = SeededGenerator(state: 7)
+    // Launch at night: the darkest video.
+    var launch = RotationState(present: Set(names(userVideos)))
+    checkEqual(switched(launch.decide(night(0, .visible), using: &rng))?.to, ff7)
+
+    // Night falls on maomao (two thirds up): off target. Visible: it waits, but asks for Veiled sampling.
+    var state = playing(maomao, mode: .dynamic, daylight: 2.0 / 3)
+    checkEqual(state.decide(night(10, .visible), using: &rng), .stay)
+    check(state.isSwitchPointNear(night(10, .visible)), "an off-target video asks for Veiled sampling")
+    // Veiled: no big jump, so one step toward the target within the band (lucyna), not ff7.
+    let step = switched(state.decide(night(15, .veiled), using: &rng))
+    checkEqual(step?.reason, .offTarget)
+    checkEqual(step?.to, lucyna)
+    // A third from the target is near enough: no early switch.
+    checkEqual(state.decide(night(20, .unseen), using: &rng), .stay)
+    // At the next Dwell switch, Veiled: the only in-band video (maomao) is further from the target, so it waits.
+    tick(&state, from: 20, until: 20 + twentyMinutes)
+    checkEqual(state.decide(night(20 + twentyMinutes, .veiled), using: &rng), .waitingForUnseen)
+    // Unseen: the darkest video, a big jump.
+    checkEqual(switched(state.decide(night(20 + twentyMinutes, .unseen), using: &rng))?.to, ff7)
+    // Nothing else near the target is unplayed: lucyna, the nearest, plays again rather than a bright video.
+    tick(&state, from: 20 + twentyMinutes, until: 20 + 2 * twentyMinutes)
+    checkEqual(switched(state.decide(night(20 + 2 * twentyMinutes, .unseen), using: &rng))?.to, lucyna)
+    runDaylightEdgeTests()
+}
+
+/// Midday, a rank no video sits near, a small library and a newly added video.
+private func runDaylightEdgeTests() {
+    var rng = SeededGenerator(state: 8)
+    // Midday on ff7: capybara is the target.
+    var day = playing(ff7, mode: .dynamic, daylight: 0)
+    let toDay = switched(day.decide(situation(at: 5, userVideos, .unseen, mode: .dynamic, daylight: 1), using: &rng))
+    checkEqual(toDay?.reason, .offTarget)
+    checkEqual(toDay?.to, capybara)
+
+    // Dusk at a rank no video sits near (0.5): the nearest unplayed video, not a replay or the far end.
+    for seed in UInt64(0)..<10 {
+        var seeded = SeededGenerator(state: seed)
+        var dusk = playing(ff7, mode: .dynamic, daylight: 0)
+        let pick = switched(dusk.decide(
+            situation(at: 5, userVideos, .unseen, mode: .dynamic, daylight: 0.5), using: &seeded))?.to
+        check(pick == lucyna || pick == maomao, "dusk picks a middle video, got \(pick?.name ?? "none")")
+    }
+
+    // Fewer than four videos: dynamic acts as all, so night doesn't force a switch.
+    let three = [capybara, lucyna, maomao]
+    var small = playing(capybara, among: three, mode: .dynamic, daylight: 1)
+    checkEqual(small.decide(night(5, .unseen, three), using: &rng), .stay)
+
+    // A newly added video plays next even at night, and keeps its full Dwell though it's far from the target.
+    var fresh = playing(lucyna, mode: .dynamic, daylight: 1.0 / 3)
+    let brightNew = video("sunny.mp4", 0.5, modified: 100)
+    let withNew = userVideos + [brightNew]
+    _ = fresh.decide(night(5, .visible, withNew), using: &rng)
+    tick(&fresh, from: 5, until: twentyMinutes, withNew)
+    checkEqual(switched(fresh.decide(night(twentyMinutes, .unseen, withNew), using: &rng))?.to, brightNew)
+    checkEqual(fresh.decide(night(twentyMinutes + 60, .unseen, withNew), using: &rng), .stay)
+    check(!fresh.isSwitchPointNear(night(twentyMinutes + 60, .visible, withNew)), "a new video's Dwell isn't cut short")
+}

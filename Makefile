@@ -11,6 +11,8 @@ LABEL     := com.videowallpaper
 VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 SUPPORT   := $(HOME)/Library/Application Support/VideoWallpaper
 BUNDLE_ID := com.evanscott.videowallpaper
+# A stable signature keeps the Location Services grant across reinstalls; ad-hoc ("-") would change every build.
+SIGN_ID   := $(or $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $$2; exit}'),-)
 
 .PHONY: install uninstall build lint test smoke debug
 
@@ -19,6 +21,7 @@ install: build
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(VIDEO_DIR) $(HOME)/Library/Logs
 	@cp Info.plist $(APP)/Contents/Info.plist
 	@install -m 755 $(BUILD_DIR)/videowallpaper $(BINARY)
+	@codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "$(APP)"
 	@sed 's|__HOME__|$(HOME)|g' $(PLIST_SRC) > $(PLIST_DST)
 	@launchctl unload $(PLIST_DST) 2>/dev/null || true
 	@launchctl load $(PLIST_DST)
@@ -41,14 +44,14 @@ smoke:
 
 build: lint test smoke
 	@mkdir -p $(BUILD_DIR)
-	swiftc -O -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
+	swiftc -O -framework AppKit -framework AVFoundation -framework CoreLocation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
 	@echo "✓ Built $(BUILD_DIR)/videowallpaper"
 
 # A separate binary for manual tests, never installed: only it honours VIDEOWALLPAPER_FOLDER and
 # VIDEOWALLPAPER_DWELL_SCALE (see the Rotation ticket's Comments).
 debug:
 	@mkdir -p $(BUILD_DIR)
-	swiftc -D DEBUG -framework AppKit -framework AVFoundation $(CORE_SRC) $(APP_SRC) -o "$(BUILD_DIR)/videowallpaper-debug"
+	swiftc -D DEBUG -framework AppKit -framework AVFoundation -framework CoreLocation $(CORE_SRC) $(APP_SRC) -o "$(BUILD_DIR)/videowallpaper-debug"
 	@echo "✓ Built $(BUILD_DIR)/videowallpaper-debug"
 
 # The agent is unloaded first so the app can't set its Poster again; then the original desktop pictures are
@@ -67,3 +70,5 @@ uninstall:
 	@defaults delete $(BUNDLE_ID) 2>/dev/null || true
 	@echo "✓ Uninstalled: app, LaunchAgent, Application Support and preferences removed"
 	@echo "  (videos in $(VIDEO_DIR)/ and the log in ~/Library/Logs/ left intact)"
+	@echo "  macOS keeps VideoWallpaper's Location Services entry, and there is no command to remove it: switch it"
+	@echo "  off in System Settings › Privacy & Security › Location Services if it is listed"

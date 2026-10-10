@@ -21,8 +21,13 @@ enum Appearance: String {
 enum RotationRules {
     /// The largest mean-luminance difference a switch may make while anyone could see it.
     static let brightnessBand = 0.08
-    /// With fewer videos, halving the Rotation for `dynamic` would leave too little to rotate.
-    static let minimumForHalves = 4
+    /// With fewer videos, aiming `dynamic` at the Target brightness would leave too little to rotate: it acts as `all`.
+    static let minimumForDaylight = 4
+    /// `dynamic` picks at random among unplayed videos this close to the Target brightness, in rank.
+    static let targetWindow = 0.15
+    /// Further than this from the Target brightness, in rank, the Current video goes at the next Unseen or Veiled
+    /// moment without waiting for Dwell. Wide enough that dusk is followed by ordinary Dwell switches.
+    static let offTarget = 0.4
     /// Exactly 0.08 apart is within the band, whatever the floating-point rounding.
     static let tolerance = 1e-9
 }
@@ -34,17 +39,14 @@ func rotationMode(setting: String?, isAutoAppearance: Bool) -> RotationMode {
     return isAutoAppearance ? .dynamic : .all
 }
 
-/// The videos the Mode prefers: the darker or brighter half by median luminance (a video at the median is in both),
-/// or every video. `dynamic` follows the appearance and acts as `all` with fewer than four videos.
-func modeCandidates(_ videos: [EligibleVideo], mode: RotationMode, appearance: Appearance) -> [EligibleVideo] {
+/// The videos the Mode allows: the darker or brighter half by median luminance (a video at the median is in both),
+/// or every video. `dynamic` allows every video and aims its pick at the Target brightness instead.
+func modeCandidates(_ videos: [EligibleVideo], mode: RotationMode) -> [EligibleVideo] {
     let half: Appearance
     switch mode {
-    case .all: return videos
+    case .all, .dynamic: return videos
     case .light: half = .light
     case .dark: half = .dark
-    case .dynamic:
-        guard videos.count >= RotationRules.minimumForHalves else { return videos }
-        half = appearance
     }
     let median = medianLuminance(of: videos)
     return videos.filter { half == .dark ? $0.meanLuminance <= median : $0.meanLuminance >= median }
@@ -90,6 +92,17 @@ func pickNext(
     return nearest.map { ($0, startsPass) }
 }
 
+// MARK: - Target brightness
+
+/// Each video's place from darkest (0) to brightest (1), evenly spaced whatever the luminance gaps, so the Target
+/// brightness means the same with any library. Ties go by name so the order is stable; a lone video sits at 0.5.
+func brightnessRanks(_ videos: [EligibleVideo]) -> [String: Double] {
+    let sorted = videos.sorted { ($0.meanLuminance, $0.name) < ($1.meanLuminance, $1.name) }
+    let last = Double(max(sorted.count - 1, 1))
+    let pairs = sorted.enumerated().map { ($1.name, sorted.count == 1 ? 0.5 : Double($0) / last) }
+    return Dictionary(pairs) { first, _ in first }
+}
+
 // MARK: - Dwell
 
 /// Awake, unlocked time since the last switch. Time counts between samples only while the previous sample said
@@ -120,6 +133,7 @@ enum SwitchReason: String {
     case currentRemoved = "current-removed"
     case newVideo = "new-video"
     case modeChange = "mode-change"
+    case offTarget = "off-target"
     case dwell
     case visibleFallback = "visible-fallback"
 }
@@ -148,13 +162,21 @@ struct RotationSituation {
     var eligible: [EligibleVideo]
     var visibility: VisibilityState
     var mode: RotationMode
-    var appearance: Appearance
+    /// Daylight, used as the Target brightness (a rank) when `followsDaylight`.
+    var daylight: Double
     var isPowerSaving = false
 
-    /// The videos the Mode prefers right now.
-    var candidates: [EligibleVideo] { modeCandidates(eligible, mode: mode, appearance: appearance) }
+    /// The videos the Mode allows right now.
+    var candidates: [EligibleVideo] { modeCandidates(eligible, mode: mode) }
 
-    func isPreferred(_ video: EligibleVideo) -> Bool { candidates.contains { $0.name == video.name } }
+    /// `dynamic` with enough videos to aim at the Target brightness; otherwise it acts as `all`.
+    var followsDaylight: Bool { mode == .dynamic && eligible.count >= RotationRules.minimumForDaylight }
+
+    func isPreferred(_ video: EligibleVideo) -> Bool {
+        guard followsDaylight else { return candidates.contains { $0.name == video.name } }
+        guard let rank = brightnessRanks(eligible)[video.name] else { return true }
+        return abs(rank - daylight) <= RotationRules.offTarget + RotationRules.tolerance
+    }
 
     func eligible(named name: String) -> EligibleVideo? { eligible.first { $0.name == name } }
 }
@@ -217,7 +239,8 @@ struct RotationState {
         self.current = current
         guard !situation.isPowerSaving else { return .stay }
         let allowed = allowedTransition(for: situation.visibility)
-        // An off-Mode video (appearance flip, `Mode` edit) goes at the next Unseen or Veiled moment, without Dwell.
+        // An off-Mode video (`Mode` edit, or far from the Target brightness) goes at the next Unseen or Veiled moment,
+        // without Dwell.
         let isModeChange = isOffMode(current, situation) && situation.visibility != .visible
         guard isModeChange || dwell.elapsed >= minimumDwell(for: situation.visibility) else { return .stay }
         if let next = nextNewVideo(in: situation) {
@@ -226,14 +249,11 @@ struct RotationState {
                 (next, startsPass: false), from: current, reason: .newVideo, fade: allowed.crossfade,
                 situation: situation)
         }
-        let candidates = situation.candidates
-        let reason: SwitchReason = isModeChange ? .modeChange
+        let reason: SwitchReason = isModeChange ? (situation.followsDaylight ? .offTarget : .modeChange)
             : situation.visibility == .visible ? .visibleFallback : .dwell
         let allowsJump = allowed.allowsBrightnessJump
-        guard let pick = pickNext(
-            from: current, candidates: candidates, played: played, allowsBigJump: allowsJump, using: &rng)
-        else {
-            let hasOthers = candidates.contains { $0.name != current.name }
+        guard let pick = pick(from: current, situation, allowsBigJump: allowsJump, using: &rng) else {
+            let hasOthers = situation.candidates.contains { $0.name != current.name }
             return hasOthers && !allowsJump ? .waitingForUnseen : .stay
         }
         return commit(pick, from: current, reason: reason, fade: allowed.crossfade, situation: situation)
@@ -241,6 +261,51 @@ struct RotationState {
 
     private func isOffMode(_ current: EligibleVideo, _ situation: RotationSituation) -> Bool {
         !isCurrentNew && !situation.isPreferred(current)
+    }
+
+    /// Near the Target brightness in `dynamic`, else within the band among the Mode's candidates.
+    private func pick(
+        from current: EligibleVideo?,
+        _ situation: RotationSituation,
+        allowsBigJump: Bool,
+        using rng: inout some RandomNumberGenerator
+    ) -> (video: EligibleVideo, startsPass: Bool)? {
+        guard situation.followsDaylight else {
+            return pickNext(
+                from: current, candidates: situation.candidates, played: played, allowsBigJump: allowsBigJump,
+                using: &rng)
+        }
+        return pickNearTarget(from: current, situation, allowsBigJump: allowsBigJump, using: &rng)
+    }
+
+    /// `dynamic`: random among unplayed-this-Pass videos within the target window; else the video nearest the Target
+    /// brightness, unplayed first, which may replay one rather than leave the target (a small library has wide
+    /// gaps). Without `allowsBigJump`, only videos within the band of `current` and no further from the target
+    /// count, so a Visible or Veiled switch only ever walks toward the target. Nil when nothing is allowed.
+    private func pickNearTarget(
+        from current: EligibleVideo?,
+        _ situation: RotationSituation,
+        allowsBigJump: Bool,
+        using rng: inout some RandomNumberGenerator
+    ) -> (video: EligibleVideo, startsPass: Bool)? {
+        let ranks = brightnessRanks(situation.eligible)
+        let distance = { (video: EligibleVideo) in abs((ranks[video.name] ?? 0.5) - situation.daylight) }
+        var others = situation.eligible.filter { $0.name != current?.name }
+        var unplayed = Set(others.map(\.name)).subtracting(played)
+        let startsPass = unplayed.isEmpty
+        if startsPass { unplayed = Set(others.map(\.name)) }
+        if let current, !allowsBigJump {
+            let limit = ranks[current.name].map { abs($0 - situation.daylight) } ?? .infinity
+            others = others.filter { isWithinBand($0, current) && distance($0) <= limit + RotationRules.tolerance }
+        }
+        let window = RotationRules.targetWindow + RotationRules.tolerance
+        let near = others.filter { unplayed.contains($0.name) && distance($0) <= window }
+        if let pick = near.randomElement(using: &rng) { return (pick, startsPass) }
+        let nearest = others.min {
+            (distance($0), unplayed.contains($0.name) ? 0 : 1, $0.name)
+                < (distance($1), unplayed.contains($1.name) ? 0 : 1, $1.name)
+        }
+        return nearest.map { ($0, startsPass) }
     }
 
     private func nextNewVideo(in situation: RotationSituation) -> EligibleVideo? {
@@ -269,7 +334,10 @@ struct RotationState {
     private mutating func startRotation(
         _ situation: RotationSituation, using rng: inout some RandomNumberGenerator
     ) -> RotationOutcome {
-        guard let next = nextNewVideo(in: situation) ?? situation.candidates.randomElement(using: &rng) else {
+        let first = situation.followsDaylight
+            ? pick(from: nil, situation, allowsBigJump: true, using: &rng)?.video
+            : situation.candidates.randomElement(using: &rng)
+        guard let next = nextNewVideo(in: situation) ?? first else {
             return .stay
         }
         return commit(
@@ -283,8 +351,7 @@ struct RotationState {
     ) -> RotationOutcome {
         current = nil
         let pick = nextNewVideo(in: situation).map { (video: $0, startsPass: false) }
-            ?? pickNext(
-                from: removed, candidates: situation.candidates, played: played, allowsBigJump: true, using: &rng)
+            ?? pick(from: removed, situation, allowsBigJump: true, using: &rng)
         guard let pick else { return .stay }
         return commit(
             pick, from: removed, reason: .currentRemoved, fade: Crossfade.quickDuration, situation: situation)

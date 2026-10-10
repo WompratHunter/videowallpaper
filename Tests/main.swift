@@ -16,6 +16,8 @@ runFlashTests()
 runAnalysisCacheTests()
 // Visibility
 runVisibilityClassificationTests()
+// Daylight: sun position, the Daylight curve and where the location comes from
+runDaylightTests()
 // Rotation
 runRotationTests()
 // Footprint: original desktop pictures and restore

@@ -5,7 +5,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 ## Language & Platform
 
 - Swift 5.9+, macOS 14+ target
-- Frameworks: AppKit, AVFoundation, Dispatch
+- Frameworks: AppKit, AVFoundation, CoreLocation, Dispatch
 - No SwiftUI, no third-party dependencies
 
 ## Naming (Apple Swift API Design Guidelines)
@@ -42,10 +42,11 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
   - **WallpaperWindows** (`WallpaperWindows*.swift`): one desktop-level window per screen, hosting the Player's layers, and occlusion
   - **Visibility** (`Visibility*.swift`): Unseen, Veiled or Visible, with a change callback
   - **Rotation** (`Rotation*.swift`): the switch scheduler, gathering Dwell, Visibility, eligible videos, `Mode` and the appearance for Core's `RotationState`, with an `onSwitch` callback
+  - **DaylightLocation** (`DaylightLocation.swift`): where Daylight is computed for (Location Services fix, cache, time zone) and the debug clock
   - `DesktopPictures.swift`: app paths (`AppFiles`) and the system desktop picture, used by the wiring
 - A module talks to the outside through its methods and `on…` callback properties that the wiring sets; it does not hold references to other modules (a module may be given another as a dependency only to host it, as WallpaperWindows hosts the Player's layers)
 - A module may span several files (one type plus extensions, or small internal helper types) when it grows past ~150 lines per type or ~400 per file; name the files after the module (`Player…`, `Library…`)
-- Core logic is split per area the same way, one file per area named for it (e.g. `Recovery`, `PlaybackGate`, `PlayerStateReport` for Player; `WallpaperFolder`, `PosterFiles`, `Flash` for Library; `VisibilityClassification`; `Rotation`; `Footprint` for desktop-picture record and restore; `Log`), each with its own test suite
+- Core logic is split per area the same way, one file per area named for it (e.g. `Recovery`, `PlaybackGate`, `PlayerStateReport` for Player; `WallpaperFolder`, `PosterFiles`, `Flash` for Library; `VisibilityClassification`; `Rotation`; `Daylight` for sun position, the Daylight curve and the location fallback; `Footprint` for desktop-picture record and restore; `Log`), each with its own test suite
 - File names must be unique across `Sources/` and `Tests/`, because `swiftc` compiles them as one module
 - Use `// MARK: - Section` to divide logical sections within a file; match existing markers (`Folder watching`, `Recovery`, `Notifications`, etc.)
 - Free functions are fine for stateless helpers (`newestVideo(in:)`)

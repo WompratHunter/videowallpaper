@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         directory: AppFiles.wallpaperDirectory,
         present: Set(Library.videoSnapshot(of: AppFiles.wallpaperDirectory).keys),
         dwellScale: RotationScheduler.debugDwellScale)
+    private let daylightLocation = DaylightLocation(cacheFile: AppFiles.locationCacheFile)
     private var tickTimer: Timer?
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -71,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rotation.modeSetting = { UserDefaults.standard.string(forKey: "Mode") }
         // The global flag is undocumented: absent reads as off, so the default Mode falls back to `all`.
         rotation.isAutoAppearance = { UserDefaults.standard.bool(forKey: "AppleInterfaceStyleSwitchesAutomatically") }
+        rotation.location = { [weak self] in self?.daylightLocation.current }
+        rotation.clock = DaylightLocation.now
+        // Location Services is asked for only once `dynamic` is in effect.
+        rotation.onDynamicMode = { [weak self] in self?.daylightLocation.activate() }
         rotation.onSwitch = { [weak self] video, fade in self?.player.play(video, fade: fade) }
         // An Unseen or Veiled moment is a switch point, acted on at once rather than at the next tick.
         visibility.onChange = { [weak self] _ in self?.rotation.evaluate(cause: "visibility") }
@@ -138,6 +143,18 @@ extension AppDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(powerStateChanged),
             name: .NSProcessInfoPowerStateDidChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(timeZoneChanged),
+            name: .NSSystemTimeZoneDidChange, object: nil)
+    }
+
+    /// Travel: the cached fix and the time zone's city may both be elsewhere now.
+    @objc private func timeZoneChanged() {
+        DispatchQueue.main.async { [weak self] in
+            NSTimeZone.resetSystemTimeZone()
+            Log.write("timezone", "timezone=\(TimeZone.current.identifier)")
+            self?.daylightLocation.refresh(cause: "timezone")
+        }
     }
 
     @objc private func screensSleep() {
@@ -167,6 +184,7 @@ extension AppDelegate {
     @objc private func systemWake() {
         player.resetBackoff(on: .wake)
         player.verifyPlayback(cause: "wake")
+        daylightLocation.refresh(cause: "wake")
     }
 
     @objc private func sessionActive() {

@@ -18,5 +18,9 @@
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSLocationUsageDescription</key>
+    <string>Matches your wallpaper's brightness to daylight where you are.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Matches your wallpaper's brightness to daylight where you are.</string>
 </dict>
 </plist>

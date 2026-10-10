@@ -15,6 +15,7 @@ enum AppFiles {
     static let posterDirectory = supportDirectory.appendingPathComponent("posters", isDirectory: true)
     static let analysisCacheFile = supportDirectory.appendingPathComponent("analysis-cache.json")
     static let originalsFile = supportDirectory.appendingPathComponent("original-desktop-pictures.json")
+    static let locationCacheFile = supportDirectory.appendingPathComponent("location.json")
     /// Written into the Wallpaper folder by versions before Posters moved to Application Support.
     static let legacyPoster = wallpaperDirectory.appendingPathComponent(".poster.jpg")
     static let defaultDesktopPicture = URL(fileURLWithPath: "/System/Library/CoreServices/DefaultDesktop.heic")

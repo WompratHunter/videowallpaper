@@ -76,7 +76,8 @@ Every eligible video (analysed and not Excluded) takes turns:
 - **When it switches.** After 20 minutes, the switch waits for a moment when the wallpaper is **Unseen** (displays asleep, locked, or every display covered by opaque windows) or **Veiled** (at least 95% of every display covered by windows for 30 s, e.g. a maximised translucent terminal), and is a 5 s crossfade. If neither happens, after an hour it switches anyway while visible, with a slow 20 s crossfade.
 - **What comes next.** A random video not yet played in this pass, among those within 0.08 mean luminance of the current one, so the brightness never jumps while you can see it. If no unplayed video is that close, the nearest one plays, but only while Unseen. Once every video has played, a new pass starts.
 - **New and removed videos.** A video you add plays next, at the next switch point (under the same brightness rule and whatever the `Mode`), and stays its full 20 minutes. Deleting the video that's playing replaces it at once; the Poster covers the gap.
-- **Light and Dark.** With `Mode` set to `dynamic` (the default when the appearance is Auto), Dark prefers the darker half of your videos by median luminance and Light the brighter half. An appearance change switches at the next Unseen or Veiled moment, not in front of you. With fewer than 4 videos `dynamic` plays them all; once the matching half has all played, it replays from that half.
+- **Daylight.** With `Mode` set to `dynamic` (the default when the appearance is Auto), the wallpaper follows how bright it is outdoors where you are: the darkest videos at night, the brightest at midday, drifting through dusk and dawn. Daylight comes from the sun's position, calculated on your Mac: 0 once the sun is 6° below the horizon (civil twilight over), 1 from 25° up, easing in between, so a low winter noon still counts as full day. It is matched against your videos ranked darkest to brightest, and the next pick is random among unplayed videos near that rank. While you can see the desktop a switch only steps toward the target within the brightness band; if the video playing is far off (say a bright one when you unlock at night) it is replaced at the next Unseen or Veiled moment without waiting out its 20 minutes. With fewer than 4 videos `dynamic` plays them all.
+- **Location.** The first time `dynamic` is in effect, macOS asks whether VideoWallpaper may use your location. Allowed: one location fix at launch, on wake and when the time zone changes, rounded to about 10 km and remembered for when Location Services can't answer. Denied (it never asks again): your time zone's reference city stands in, which can put sunrise up to about half an hour off. The app itself makes no network calls, and the log only ever shows rounded coordinates.
 - **Low Power Mode** shows the Poster and doesn't switch; a deleted video is still replaced when it ends.
 
 Each switch is logged with its reason, the videos, the luminance difference and the fade: `[rotation] switch reason=dwell on=visibility from=lucyna.mp4 to=maomao.mp4 ΔL=0.016 fade=5s visibility=unseen …`. A switch that needs Unseen logs `waiting for Unseen` once.
@@ -89,7 +90,7 @@ Preferences live in the `com.evanscott.videowallpaper` domain. `Mode` is read at
 
 | Key | Values | Default |
 |---|---|---|
-| `Mode` | `all`, `light` (brighter half), `dark` (darker half), `dynamic` (follows the appearance) | `dynamic` when the appearance is Auto, otherwise `all` |
+| `Mode` | `all`, `light` (brighter half), `dark` (darker half), `dynamic` (follows Daylight where you are) | `dynamic` when the appearance is Auto, otherwise `all` |
 | `FlashOverride` | Array of file names to play even though they flash (see above) | none |
 
 ```sh
@@ -100,7 +101,7 @@ defaults write com.evanscott.videowallpaper FlashOverride -array "storm.mp4"
 defaults read com.evanscott.videowallpaper                 # show the current settings
 ```
 
-A new `Mode` takes effect at the next decision (within 5 s): a video outside the chosen half is replaced at the next Unseen or Veiled moment. The app reads, but never changes, the system's Auto appearance setting.
+A new `Mode` takes effect at the next decision (within 5 s): a video outside the chosen half (or far from the Daylight target) is replaced at the next Unseen or Veiled moment. The app reads, but never changes, the system's Auto appearance setting, which only decides the default `Mode`.
 
 ## Desktop picture
 
@@ -116,7 +117,7 @@ Restore only touches displays that show one of the app's Posters; a picture you 
 2. restores your original desktop picture (current Space only, as above);
 3. removes the app, the LaunchAgent, `~/Library/Application Support/VideoWallpaper/` and the `com.evanscott.videowallpaper` preferences, plus any legacy `.poster.jpg` in the video folder.
 
-Your videos in `~/Movies/LiveWallpaper/` and the log in `~/Library/Logs/` are left in place.
+Your videos in `~/Movies/LiveWallpaper/` and the log in `~/Library/Logs/` are left in place. macOS keeps VideoWallpaper's entry in System Settings › Privacy & Security › Location Services and offers no command to remove it; switch it off there if you like.
 
 ## Design notes
 
