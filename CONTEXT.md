@@ -49,13 +49,22 @@ _Avoid_: restart (the app process does not restart)
 **Lock screen**:
 The macOS screen shown on wake before unlocking; it displays the Poster, not the Live wallpaper.
 
+**Daylight**:
+How bright it is outdoors where the Mac is right now, from full night to full day; for now it comes from the sun's position only.
+_Avoid_: ambient light (that is the room, not the sky), weather, lighting conditions
+
+**Target brightness**:
+The place in the Rotation's dark-to-bright ranking that the next pick aims for, set by Daylight: night aims at the darkest videos, midday at the brightest.
+
 ## Relationships
 
 - The **Wallpaper folder** holds many videos; the **Rotation** is the eligible (non-**Excluded**) subset.
 - Each video has exactly one **Poster** and one **Analysis**.
 - Switching the **Current video** depends on **Dwell** and on whether the desktop is **Unseen**, **Veiled** or **Visible**.
+- **Daylight** sets the **Target brightness**; the **Rotation** picks near it. A Current video far from the Target brightness makes a switch due early, but only at an **Unseen** or **Veiled** moment.
 
 ## Flagged ambiguities
 
 - "Screensaver" was used for what is actually the **Lock screen**.
+- "Lighting conditions" meant outdoor **Daylight**, not the room's light measured by the Mac's ambient light sensor.
 - **Dwell** was first defined as visible-only time; redefined as awake, unlocked time so the Rotation still advances behind a translucent terminal.
