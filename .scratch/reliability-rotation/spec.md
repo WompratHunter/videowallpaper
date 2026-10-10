@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-Sources: grilling session (2026-10-03), reviewed plan (Opus review pass), user answers A–H and T1–T3. Vocabulary per `CONTEXT.md`. Standards per `.claude/CODING_STANDARDS.md`.
+Sources: grilling session (2026-10-03), reviewed plan (Opus review pass), user answers A–H and T1–T3; Daylight grilling (2026-10-10), user answers Q1–Q14. Vocabulary per `CONTEXT.md`. Standards per `.claude/CODING_STANDARDS.md`.
 
 ## Problem Statement
 
@@ -15,6 +15,8 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
 **Phase 1: never black.** The Live wallpaper always has the Poster drawn underneath the video, so a failed player shows the Poster, never black. A single shared player drives every display. The app detects a failed or stuck player and performs Recovery on its own, resuming where it left off, with sensible backoff. It pauses when nobody can see it (opaque windows covering everything, screens asleep) and in Low Power Mode, and logs every wake and Recovery so future problems are diagnosable. Dropped files are only loaded once fully copied. Uninstall leaves the system exactly as it was, including my original desktop picture. Behaviour is still "newest video wins" in this phase.
 
 **Phase 2: Rotation.** Every eligible video in the Wallpaper folder takes turns. Each video gets a one-time Analysis (brightness, flash rate, Poster). Videos that flash more than 3 times a second are Excluded unless I list them in an override. Switches happen only after 20 minutes of Dwell, and preferably when the desktop is Unseen or Veiled, always as a smooth 5 s crossfade; if the desktop has been Visible the whole time, a slow 20 s crossfade to a similar-brightness video happens after 1 hour. The next video is chosen at random among those of similar brightness; large brightness jumps only happen while Unseen. With Auto appearance, Dark prefers darker videos and Light brighter ones. The lock screen always shows the Current video's Poster. A newly dropped video plays next.
+
+**Phase 3: Daylight.** In `dynamic` Mode the wallpaper follows how bright it is outdoors where I am, not the Light/Dark appearance: dark videos at night, brighter ones through the day, drifting gradually across dusk and dawn. Daylight comes from the sun's position, calculated on the Mac from my location (Location Services if I allow it, otherwise my time zone), with no network calls by the app. If a clearly wrong video is showing (say, a bright one after I unlock at night), it is swapped at the next Unseen or Veiled moment without waiting for the usual 20 minutes. Weather (cloudy, stormy) is a later addition once WeatherKit is available.
 
 ## User Stories
 
@@ -32,8 +34,8 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
 12. As a user, I want a timestamped log line for every wake (with the player's state), Recovery, switch and exclusion, so that any future failure can be diagnosed.
 13. As a user, I want a video I'm still copying into the folder to be ignored until the copy finishes, so that half-written files never get loaded.
 14. As a user, I want no hidden files created in my Wallpaper folder, so that it contains only my videos.
-15. As a user, I want uninstall to restore my original desktop picture and remove all app data and settings, so that nothing is left behind.
-16. As a user, I want everything to run as my own user with no special permissions or prompts, so that my Mac's security and warranty are untouched.
+15. As a user, I want uninstall to restore my original desktop picture and remove all app data and settings, so that nothing is left behind (except the app's Location Services entry, which macOS offers no command to remove; uninstall tells me how to remove it by hand).
+16. As a user, I want everything to run as my own user with no special permissions, and at most one prompt (Location Services, only in `dynamic` Mode), so that my Mac's security and warranty are untouched.
 17. As a user, I want every video in the folder to take turns, so that I get variety without doing anything.
 18. As a user, I want a video to stay for at least 20 minutes of awake, unlocked time, so that the wallpaper feels settled rather than restless.
 19. As a user, I want switches to happen when I can't see the desktop, or barely can, so that they don't break my concentration.
@@ -60,6 +62,15 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
 40. As a user, I want the cache pruned when I delete videos, so that app data doesn't grow forever.
 41. As a user, I want `make build` to run lint and tests automatically, so that a broken build can never be installed.
 42. As a user, I want the app reinstalled and restarted with `make install` after each merged change, so that I can see it working immediately.
+43. As a user in `dynamic` Mode, I want the wallpaper to follow Daylight where I am (dark at night, bright at midday), so that it matches the light outside rather than a Light/Dark switch. (Supersedes 27 and 29.)
+44. As a user, I want my exact location used if I allow it, and my time zone otherwise, so that it works well with permission and still works without it.
+45. As a user, I want to be asked for location only once, and only when `dynamic` is in effect, so that the app never nags.
+46. As a user, I want the location grant to survive `make install`, so that rebuilds don't re-prompt.
+47. As a user, I want the wallpaper to drift gradually toward darker or brighter videos through dusk and dawn, so that the change is never visible as a jump.
+48. As a user who unlocks at night to a bright video, I want it replaced at the next Unseen or Veiled moment without waiting out Dwell, so that a clear mismatch doesn't linger.
+49. As a user, I want a video I just added to still play next, even at night, so that I see it soon after dropping it in.
+50. As a user, I want my precise location never written to the log, so that the log is safe to share.
+51. As a user, I want each switch logged with Daylight, the Target brightness and where my location came from, so that a surprising pick can be explained.
 
 ## Implementation Decisions
 
@@ -97,6 +108,16 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
   - Method: decode every frame at reduced resolution, 12×12 grid, overlapping 2×2 neighbourhoods (≈2.8% of the screen) plus the full frame. A flash is a pair of opposing relative-luminance changes of at least 0.10 where the darker state is below 0.80. Count the maximum within any 1 s window.
   - Outcome: ≤3/s is eligible. Above 3/s is Excluded unless the file name is in `FlashOverride` (E: an array of file names).
 - Settings: the app's own preferences domain (bundle id), keys `Mode` and `FlashOverride`, read at decision time.
+- Daylight (Phase 3, supersedes the appearance rules of `dynamic` above):
+  - Sun position: computed locally (NOAA solar algorithm) from coordinates and the current time; a pure core function. Handles polar day and night.
+  - Daylight: 0 when the sun is below −6°, 1 above +25°, smoothstep between. Winter middays therefore still reach full day. Example: New York, 21 Dec: dark until ~06:45, full by ~10:15, falling from ~13:45, dark after ~16:58.
+  - Target brightness: Daylight used directly as a percentile in the eligible videos' luminance ranking (0 = darkest, 1 = brightest).
+  - Pick order in `dynamic`: (1) a newly added video plays next, regardless of target; (2) random among unplayed-this-Pass videos within ±0.15 of the target rank, and, while Visible, within ΔL ≤ 0.08 of the Current video; (3) if none while Visible, the in-band video nearest the target, so the wallpaper walks toward the target across dusk; (4) if still none, replay the played video nearest the target, never the Current one. With fewer than 4 eligible videos, `dynamic` acts as `all`.
+  - Early switch: when the Current video's rank is more than 0.4 from the target, a switch is due regardless of Dwell, but only at an Unseen or Veiled moment.
+  - Appearance: only chooses the default Mode (Auto → `dynamic`, else `all`). Appearance changes no longer trigger a switch.
+  - Location source chain: one-shot CoreLocation fix at launch, on wake and on time-zone change → cached last fix (rounded to ~0.1°, stored in Application Support, used only if its time zone matches the current one) → coordinates for the current time-zone identifier from `/usr/share/zoneinfo/zone.tab`. Authorization is requested only when the effective Mode is `dynamic`, never again after a denial. No continuous monitoring. Precise coordinates are never logged.
+  - Logging: every switch adds Daylight, Target brightness and location source (fix / cache / timezone); authorization changes and new fixes are logged (rounded coordinates only).
+  - Weather is a later input to Daylight (ticket 11, WeatherKit); Daylight stays behind one interface so it can be added without touching the pick.
 - Cache index: keyed by path + size + mtime; holds mean luminance, flash rate and Poster file name. Pruned on each folder scan.
 - Analysis cost reference: a 20 s 4K60 clip takes ~3.6 s wall time and ~0.5 s CPU, once.
 
@@ -104,6 +125,7 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
 - The Makefile builds all app Swift files. `build` depends on `lint` and `test`. `test` compiles the core-logic file(s) together with the test sources into a scratch build folder and runs them.
 - SwiftLint's `included` list widens to cover all app and test Swift sources.
 - `CODING_STANDARDS.md` gains a short Testing section describing the harness and what must be tested.
+- Phase 3: the Makefile signs the `.app` with the user's "Apple Development" identity (falling back to ad-hoc if absent) so the Location Services grant survives rebuilds; it links CoreLocation. `Info.plist` gains `NSLocationUsageDescription` ("Matches your wallpaper's brightness to daylight where you are."). `make uninstall` prints how to remove the Location Services entry.
 
 ## Testing Decisions
 
@@ -113,6 +135,7 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
 - **Coverage (T2b):**
   - Phase 1: Recovery decision, backoff with reset, settle check.
   - Phase 2: flash counting (synthetic square waves at 2, 3, 4 and 6 Hz; slow drift not counted; small-region flashes caught), luminance LUT and mean, Poster-frame choice, tiers and override, Rotation pick (band, no repeat within a Pass, new video next, Unseen-only big jumps), Mode filtering (including <4 videos → all), Dwell, visibility classification and transitions, cache prune.
+  - Phase 3: sun position vs NOAA reference sunrise/sunset for several cities and dates (±2 min), including polar day and night; Daylight curve; target → pick order (all four steps, new video beats target); early-switch threshold; location source chain including the same-time-zone check for the cache and `zone.tab` lookup.
   - One smoke test runs the real analyser on a generated 2 s clip with a known flash rate, so the accessibility screener is checked end to end.
 - **Gate (T3a):** `make build` runs lint then tests; any failure stops the build and the install.
 - **Manual checklist** (documented, run by agents where possible, with the user present for sleep):
@@ -120,12 +143,15 @@ Beyond the bug, I want the wallpaper to be something I never touch: drop videos 
   - `pmset sleepnow`, then wake and unlock: the wake-state line is logged and playback recovers.
   - Idle cost via `top` in three states: Visible, covered by an opaque app, Low Power Mode.
   - Ghostty in front: the video keeps playing.
+  - Phase 3: with a debug-only clock/location override (not user-facing), simulate dusk with ≥ 3 videos of differing brightness and confirm the walk toward darker videos and an early switch on lock/unlock; deny Location Services and confirm the time-zone fallback is logged.
 - **Prior art:** none in the repo. The prototype analyser from the grilling session (handoff folder `flash.swift` / `flash12.swift`) is reference material for the flash algorithm, not code to copy as-is.
 
 ## Out of Scope
 
 - A GUI or TUI for settings (the keys are designed for it later), including toggling `FlashOverride` per person.
-- Location-based solar timing. Only the Light/Dark appearance is used.
+- Weather conditions (cloud cover, storms) in Daylight: deferred to ticket 11 (WeatherKit, needs a paid Developer Program membership).
+- The Mac's ambient light sensor (private API; measures the room, not the sky).
+- Continuous location monitoring.
 - A red-flash test or any certified photosensitivity assessment.
 - Images (stills) as wallpaper content.
 - Different videos per display.
