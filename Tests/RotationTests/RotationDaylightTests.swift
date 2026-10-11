@@ -42,7 +42,7 @@ private func night(
     #expect(switched(state.decide(night(20 + 2 * twentyMinutes, .unseen), using: &rng))?.to == lucyna)
 }
 
-/// Midday, a rank no video sits near, a small library and a newly added video.
+/// Midday, an empty window, a small library and a newly added video (dusk at a rank no video sits near is below).
 @Test func dynamicAtTheEdges() {
     var rng = SeededGenerator(state: 8)
     // Midday on ff7: capybara is the target.
@@ -50,15 +50,6 @@ private func night(
     let toDay = switched(day.decide(situation(at: 5, userVideos, .unseen, mode: .dynamic, daylight: 1), using: &rng))
     #expect(toDay?.reason == .offTarget)
     #expect(toDay?.to == capybara)
-
-    // Dusk at a rank no video sits near (0.5): the nearest unplayed video, not a replay or the far end.
-    for seed in UInt64(0)..<10 {
-        var seeded = SeededGenerator(state: seed)
-        var dusk = playing(ff7, mode: .dynamic, daylight: 0)
-        let pick = switched(dusk.decide(
-            situation(at: 5, userVideos, .unseen, mode: .dynamic, daylight: 0.5), using: &seeded))?.to
-        #expect(pick == lucyna || pick == maomao, "dusk picks a middle video, got \(pick?.name ?? "none")")
-    }
 
     // An empty window: the nearest unplayed video within reach (ff7) beats replaying a nearer played one (lucyna).
     var evening = playing(lucyna, mode: .dynamic, daylight: 1.0 / 3)
@@ -95,4 +86,14 @@ private func night(
     #expect(fresh.decide(night(twentyMinutes + 60, .unseen, withNew), using: &rng) == .stay)
     #expect(
         !fresh.isSwitchPointNear(night(twentyMinutes + 60, .visible, withNew)), "a new video's Dwell isn't cut short")
+}
+
+/// Dusk at a rank no video sits near (0.5): the nearest unplayed video, not a replay or the far end, whatever the RNG.
+@Test(arguments: UInt64(0)..<10)
+func duskPicksAMiddleVideo(seed: UInt64) {
+    var rng = SeededGenerator(state: seed)
+    var dusk = playing(ff7, mode: .dynamic, daylight: 0)
+    let pick = switched(dusk.decide(
+        situation(at: 5, userVideos, .unseen, mode: .dynamic, daylight: 0.5), using: &rng))?.to
+    #expect(pick == lucyna || pick == maomao, "dusk picks a middle video, got \(pick?.name ?? "none")")
 }
