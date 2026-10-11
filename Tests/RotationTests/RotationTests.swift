@@ -119,13 +119,16 @@ func tick(
 
 // MARK: - Pick
 
+/// Band: from lucyna, only maomao is within 0.08, whatever the RNG.
+@Test(arguments: UInt64(0)..<50)
+func fromLucynaOnlyMaomaoIsInTheBand(seed: UInt64) {
+    var rng = SeededGenerator(state: seed)
+    let pick = pickNext(from: lucyna, candidates: userVideos, played: [], allowsBigJump: false, using: &rng)
+    #expect(pick?.video == maomao)
+}
+
 @Test func pickStaysInTheBandAndThePass() {
     var rng = SeededGenerator(state: 1)
-    // Band: from lucyna, only maomao is within 0.08, whatever the RNG.
-    for _ in 0..<50 {
-        let pick = pickNext(from: lucyna, candidates: userVideos, played: [], allowsBigJump: false, using: &rng)
-        #expect(pick?.video == maomao)
-    }
     // Exactly 0.08 apart is within the band.
     let edge = video("edge.mp4", 0.161 + 0.08)
     let atEdge = pickNext(from: lucyna, candidates: [lucyna, edge], played: [], allowsBigJump: false, using: &rng)
