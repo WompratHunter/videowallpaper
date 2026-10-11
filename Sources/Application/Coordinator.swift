@@ -112,8 +112,13 @@ public final class Coordinator {
 
     func publishSnapshot() {
         let next = AppSnapshot(
-            library: library.slice, rotation: rotation.slice, playback: playback.slice, presence: presence.slice,
-            daylight: daylight.slice, desktop: desktop.slice, preferences: settings.load())
+            library: library.slice,
+            rotation: rotation.slice,
+            playback: playback.slice,
+            presence: presence.slice,
+            daylight: daylight.slice,
+            desktop: desktop.slice,
+            preferences: settings.load())
         guard next != snapshot else { return }
         snapshot = next
         snapshotObservers.forEach { $0(next) }
