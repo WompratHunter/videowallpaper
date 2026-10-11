@@ -6,7 +6,7 @@ import Foundation
 // same name gives the Video a new Version. Analysis and Posters are keyed by Version; Pass history, the new-video
 // queue and FlashOverride by Video.
 
-public struct VideoID: Hashable, Comparable, CustomStringConvertible {
+public struct VideoID: Hashable, Comparable, CustomStringConvertible, Sendable {
     public let fileName: String
 
     public init(_ fileName: String) {
@@ -18,7 +18,7 @@ public struct VideoID: Hashable, Comparable, CustomStringConvertible {
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.fileName < rhs.fileName }
 }
 
-public struct Version: Hashable {
+public struct Version: Hashable, Sendable {
     public let size: Int64
     /// Whole milliseconds, so a date read back from disk or JSON compares equal to the original.
     public let modifiedMilliseconds: Int64
@@ -37,7 +37,7 @@ public struct Version: Hashable {
 
 /// A Video the Rotation may play: analysed and not Excluded. All Rotation ever sees of the Library: never flash rates
 /// or files.
-public struct EligibleVideo: Equatable {
+public struct EligibleVideo: Equatable, Sendable {
     public let id: VideoID
     public let version: Version
     public let meanLuminance: Double
