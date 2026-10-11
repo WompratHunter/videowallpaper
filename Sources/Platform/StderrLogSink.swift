@@ -9,9 +9,12 @@ import Core
 enum StderrLogSink {
     @MainActor
     static func attach(to coordinator: Coordinator) {
-        coordinator.subscribe { event in
-            guard let line = event.logLine else { return }
-            Log.write(line.cause, line.message)
-        }
+        coordinator.subscribe { write($0) }
+    }
+
+    /// Also used without the coordinator, by `--restore-wallpaper`.
+    static func write(_ event: AppEvent) {
+        guard let line = event.logLine else { return }
+        Log.write(line.cause, line.message)
     }
 }

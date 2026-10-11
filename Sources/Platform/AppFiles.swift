@@ -1,4 +1,4 @@
-import Core
+import Desktop
 import Foundation
 
 // MARK: - Where the app keeps its files

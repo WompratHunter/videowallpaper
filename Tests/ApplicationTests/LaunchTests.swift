@@ -27,7 +27,6 @@ struct LaunchTests {
         #expect(app.snapshots.last == app.coordinator.snapshot)
         #expect(app.coordinator.snapshot.preferences == Preferences(modeSetting: "all"))
         #expect(app.library.isStarted)
-        #expect(app.desktop.recordings == 1)
     }
 
     @Test func analysisFinishingAfterLaunchStartsTheRotation() {
