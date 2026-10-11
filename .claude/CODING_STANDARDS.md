@@ -1,6 +1,6 @@
 # Coding Standards
 
-Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`, which builds every `Sources/App/*.swift` and `Sources/Core/*.swift` file (entry file `Sources/App/main.swift`); SwiftLint covers `Sources/` and `Tests/`. App code is split into modules (see Code Organisation); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
+Swift-only macOS app, built as a SwiftPM package (`Package.swift`, ADR 0001) that the `Makefile` drives with `swift build` / `swift test`. While the code moves into one target per context, it has legacy targets: `Core` (`Sources/Core/`, Foundation-only), `Analyser` (`Sources/Analyser/`, AVFoundation, shared with the smoke runner), `App` (`Sources/App/`), the thin `VideoWallpaper` executable (`Sources/VideoWallpaper/main.swift`) and `Smoke` (`Tests/Smoke/`); legacy declarations used across targets are `package`. SwiftLint covers `Package.swift`, `Sources/` and `Tests/`. App code is split into modules (see Code Organisation); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
 
 ## Language & Platform
 
@@ -36,7 +36,7 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 
 ## Code Organisation
 
-- The app is a set of deep modules, each a small interface over most of the logic. Modules never call each other: `Sources/App/main.swift` (the app delegate) is the only place they meet, connecting system notifications, the shared 5 s tick and settings reads to each module and carrying one module's callbacks to another
+- The app is a set of deep modules, each a small interface over most of the logic. Modules never call each other: `Sources/App/AppDelegate.swift` is the only place they meet, connecting system notifications, the shared 5 s tick and settings reads to each module and carrying one module's callbacks to another
   - **Player** (`Player*.swift`): the shared player, the layers in every window, health checks and Recovery
   - **Library** (`Library*.swift`): the Wallpaper folder watch, settle check, the video to play and its Posters
   - **WallpaperWindows** (`WallpaperWindows*.swift`): one desktop-level window per screen, hosting the Player's layers, and occlusion
@@ -47,7 +47,6 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 - A module talks to the outside through its methods and `on…` callback properties that the wiring sets; it does not hold references to other modules (a module may be given another as a dependency only to host it, as WallpaperWindows hosts the Player's layers)
 - A module may span several files (one type plus extensions, or small internal helper types) when it grows past ~150 lines per type or ~400 per file; name the files after the module (`Player…`, `Library…`)
 - Core logic is split per area the same way, one file per area named for it (e.g. `Recovery`, `PlaybackGate`, `PlayerStateReport` for Player; `WallpaperFolder`, `PosterFiles`, `Flash` for Library; `VisibilityClassification`; `Rotation`; `Daylight` for sun position, the Daylight curve and the location fallback; `Footprint` for desktop-picture record and restore; `Log`), each with its own test suite
-- File names must be unique across `Sources/` and `Tests/`, because `swiftc` compiles them as one module
 - Use `// MARK: - Section` to divide logical sections within a file; match existing markers (`Folder watching`, `Recovery`, `Notifications`, etc.)
 - Free functions are fine for stateless helpers (`newestVideo(in:)`)
 
@@ -79,9 +78,9 @@ Swift-only macOS app. No Xcode project — compiled via `Makefile` with `swiftc`
 
 ## Testing
 
-- Harness: a plain `swiftc`-compiled runner in `Tests/` — no SwiftPM, no XCTest. `make test` compiles `Sources/Core/*.swift` with `Tests/*.swift` into `.build/tests` and runs it
-- Use `check(_:_:)` / `checkEqual(_:_:)` from `Tests/Check.swift`; the runner exits non-zero if any check fails
-- One suite file per Core area (`Tests/<Area>Tests.swift`) exposing `run<Area>Tests()`, registered in `Tests/main.swift`; add checks to the matching suite rather than a new one
+- Harness: swift-testing under `swift test` (`make test`), no XCTest. New tests are native `@Test`s in `Tests/CoreTests/`
+- The legacy suites use `check(_:_:)` / `checkEqual(_:_:)` from `Tests/CoreTests/Check.swift`; a failed check records a swift-testing issue, which fails the run
+- One suite file per Core area (`Tests/CoreTests/<Area>Tests.swift`) exposing `run<Area>Tests()`, run by `everyLegacySuite` in `Tests/CoreTests/LegacySuites.swift`; add checks to the matching suite rather than a new one
 - The seam is `Sources/Core/`: Foundation-only pure functions and value types. Anything that is a decision (Recovery, backoff, settle, flash counting, Rotation pick, visibility, log formatting) belongs there and must be tested; AppKit/AVFoundation code only gathers inputs and applies results
 - State transitions belong in Core too: when a decision depends on state the app also mutates (e.g. reading "is recovering" vs resetting the backoff), Core takes the current state and returns the action plus the next state, so ordering is tested; app code only applies the returned action
 - Tests assert the decision returned for given inputs, not internal state or call order; inject clocks and RNGs rather than reading them
