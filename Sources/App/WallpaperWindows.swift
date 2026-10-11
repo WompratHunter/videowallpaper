@@ -1,18 +1,19 @@
 import AppKit
+import Application
 import Core
 
 // MARK: - Wallpaper windows
 // One desktop-level window per screen. Windows only host the shared player's layers; all playback lives in Player.
 
-final class WallpaperWindows {
+package final class WallpaperWindows {
     /// Called with whether every window is covered by opaque windows, on each build and occlusion change.
-    var onOcclusionChange: (Bool) -> Void = { _ in }
+    package var onOcclusionChange: (Bool) -> Void = { _ in }
 
     private let player: Player
     private var windows: [WallpaperWindow] = []
     private var occlusionObserver: NSObjectProtocol?
 
-    init(player: Player) {
+    package init(player: Player) {
         self.player = player
     }
 
@@ -21,7 +22,7 @@ final class WallpaperWindows {
     }
 
     /// One window per connected screen; run at launch and whenever screens are added, removed or rearranged.
-    func rebuild() {
+    package func rebuild() {
         // Swapped out before closing: a closing window's occlusion change must not count as the desktop covered.
         let old = windows
         windows = NSScreen.screens.map { WallpaperWindow(screen: $0, player: player) }
@@ -33,7 +34,7 @@ final class WallpaperWindows {
     }
 
     /// The window level and order can be lost across wake and Space switches.
-    func reassert() {
+    package func reassert() {
         windows.forEach { $0.reassert() }
     }
 
@@ -62,6 +63,8 @@ final class WallpaperWindows {
         onOcclusionChange(isAllOccluded)
     }
 }
+
+extension WallpaperWindows: WallpaperWindowsService {}
 
 // MARK: - Per-screen wallpaper window
 

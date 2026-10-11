@@ -3,10 +3,16 @@ import Testing
 
 // MARK: - Check helper
 // The suites predate swift-testing: each failed check records an issue at the caller's line, so `swift test` fails
-// without stopping the remaining checks. Only `everyLegacySuite` runs them, one at a time, so the count isn't shared.
+// without stopping the remaining checks. Only `LegacySuites` runs them, one context at a time (serialized), so the
+// count isn't shared.
 
 private(set) var checkCount = 0
 private(set) var failedCheckCount = 0
+
+func resetCheckCounts() {
+    checkCount = 0
+    failedCheckCount = 0
+}
 
 func check(
     _ condition: Bool,

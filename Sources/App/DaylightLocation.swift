@@ -1,13 +1,17 @@
+import AppKit
+import Application
 import Core
 import CoreLocation
+import Daylight
 
 // MARK: - Daylight location
 // Where Daylight is computed for. A one-shot Location Services fix (asked for only once `dynamic` is in effect, at
 // launch, on wake and on a time zone change), else the last fix cached in Application Support if it was taken in
 // this time zone, else the time zone's reference city from `zone.tab`. The choice is Core's `resolveLocation`; this
-// only talks to CoreLocation and the cache file. Only rounded coordinates are stored or logged.
+// only talks to CoreLocation and the cache file. Only rounded coordinates are stored or logged. With no place at all,
+// the system appearance stands in.
 
-final class DaylightLocation: NSObject, CLLocationManagerDelegate {
+package final class DaylightLocation: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let cacheFile: URL
     private let zones: [String: Coordinates]
@@ -17,7 +21,7 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
     private var isActive = false
     private var loggedLocation: String?
 
-    init(cacheFile: URL, zoneTab: URL = URL(fileURLWithPath: "/usr/share/zoneinfo/zone.tab")) {
+    package init(cacheFile: URL, zoneTab: URL = URL(fileURLWithPath: "/usr/share/zoneinfo/zone.tab")) {
         self.cacheFile = cacheFile
         zones = (try? String(contentsOf: zoneTab, encoding: .utf8)).map(parseZoneTab) ?? [:]
         cached = (try? Data(contentsOf: cacheFile)).flatMap { try? JSONDecoder().decode(LocationCache.self, from: $0) }
@@ -25,8 +29,13 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyKilometer
     }
 
+    /// Daylight now (Core's `currentDaylight`), at the debug clock's time in a `make debug` build.
+    package func current() -> (level: Double, basis: DaylightBasis) {
+        currentDaylight(at: Self.now(), location: resolved(), appearance: Self.currentAppearance())
+    }
+
     /// Resolves the location to use now (logged when it changes); nil only in a time zone with no place (e.g. UTC).
-    func resolved() -> ResolvedLocation? {
+    private func resolved() -> ResolvedLocation? {
         if let forced = Self.debugLocation { return ResolvedLocation(coordinates: forced, source: .fix) }
         let location = resolveLocation(fix: fix, cached: cached, timeZone: TimeZone.current.identifier, zones: zones)
         let description = location.map { "source=\($0.source.rawValue) at=\(Self.describe($0.coordinates))" }
@@ -40,7 +49,7 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
 
     /// Asks for permission the first time (macOS never asks again once denied), then for a fix. Idempotent, so the
     /// scheduler can call it on every decision that wants Daylight.
-    func activate() {
+    package func activate() {
         guard !isActive else { return }
         isActive = true
         manager.delegate = self
@@ -48,7 +57,7 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
     }
 
     /// Wake or a time zone change: ask for a new fix. A fix from another time zone is already ignored by Core.
-    func refresh(cause: String) {
+    package func refresh(cause: String) {
         guard isActive else { return }
         requestFix(cause: cause)
     }
@@ -67,13 +76,13 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
 
     // MARK: - CLLocationManagerDelegate
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    package func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         Log.write("location", "authorization=\(Self.describe(status))")
         if status == .authorizedAlways { manager.requestLocation() }
     }
 
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    package func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         let place = roundedForPrivacy(Coordinates(
             latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
@@ -90,7 +99,7 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    package func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Log.write("location", "fix failed: \(error.localizedDescription)")
     }
 
@@ -106,6 +115,14 @@ final class DaylightLocation: NSObject, CLLocationManagerDelegate {
         case .authorizedAlways: return "authorized"
         @unknown default: return "unknown"
         }
+    }
+}
+
+extension DaylightLocation: DaylightService {
+    package var slice: DaylightSlice { DaylightSlice() }
+
+    private static func currentAppearance() -> Appearance {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
     }
 }
 

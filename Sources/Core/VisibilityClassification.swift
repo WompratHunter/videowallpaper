@@ -1,15 +1,10 @@
 import Foundation
+import SharedKernel
 
 // MARK: - Visibility classification
-// Whether anyone can see the Live wallpaper (see CONTEXT.md), and which switch each answer allows. Unseen comes from
+// Whether anyone can see the Live wallpaper (see CONTEXT.md): its Presence. Unseen comes from
 // notifications; Veiled from window-list bounds sampled only when a caller asks, so it needs no Screen Recording
 // permission and costs nothing while no switch is due.
-
-package enum VisibilityState: String, Equatable {
-    case unseen
-    case veiled
-    case visible
-}
 
 /// Each window's "visible" occlusion flag. Translucent windows (e.g. Ghostty) don't clear the flag, so only
 /// opaque coverage of every display counts. No windows at all is not "covered".
@@ -45,7 +40,7 @@ extension VisibilityInputs {
     }
 }
 
-package func classifyVisibility(_ inputs: VisibilityInputs) -> VisibilityState {
+package func classifyVisibility(_ inputs: VisibilityInputs) -> Presence {
     if inputs.isEveryWindowOccluded || inputs.areScreensAsleep || inputs.isSessionInactive || inputs.isLocked {
         return .unseen
     }
@@ -175,7 +170,7 @@ package struct VeilTracker {
 /// The current state and what moves it: notification events, coverage samples and the expiry of the last sample.
 /// Each step returns the new state only when it changed, so the app logs and reports exactly the changes.
 package struct VisibilityTracker {
-    package private(set) var state: VisibilityState = .visible
+    package private(set) var state: Presence = .visible
     private var inputs = VisibilityInputs()
     private var veil = VeilTracker()
 
@@ -184,40 +179,22 @@ package struct VisibilityTracker {
     /// Veiled can't override Unseen, so the window list isn't worth reading then.
     package var needsCoverageSample: Bool { classifyVisibility(inputs) != .unseen }
 
-    package mutating func apply(_ event: VisibilityEvent, at now: Date) -> VisibilityState? {
+    package mutating func apply(_ event: VisibilityEvent, at now: Date) -> Presence? {
         inputs.apply(event)
         return refresh(at: now)
     }
 
-    package mutating func sample(coverage: Double, at now: Date) -> VisibilityState? {
+    package mutating func sample(coverage: Double, at now: Date) -> Presence? {
         veil.sample(coverage: coverage, at: now)
         return refresh(at: now)
     }
 
     /// Re-reads the coverage clock: once the last sample is older than `VeilTracker.maxSampleGap`, Veiled lapses.
-    package mutating func refresh(at now: Date) -> VisibilityState? {
+    package mutating func refresh(at now: Date) -> Presence? {
         inputs.coveredFor = veil.coveredFor(at: now)
         let next = classifyVisibility(inputs)
         guard next != state else { return nil }
         state = next
         return next
-    }
-}
-
-// MARK: - Allowed transition
-
-/// What a switch may look like in a given state: Unseen and Veiled take a 5 s crossfade after the minimum Dwell;
-/// Visible only takes the slow fallback after an hour. Only Unseen allows a large brightness jump.
-package struct AllowedTransition: Equatable {
-    package let crossfade: TimeInterval
-    package let minimumDwell: TimeInterval
-    package let allowsBrightnessJump: Bool
-}
-
-package func allowedTransition(for state: VisibilityState) -> AllowedTransition {
-    switch state {
-    case .unseen: return AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: true)
-    case .veiled: return AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: false)
-    case .visible: return AllowedTransition(crossfade: 20, minimumDwell: 60 * 60, allowsBrightnessJump: false)
     }
 }

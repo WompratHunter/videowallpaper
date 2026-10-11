@@ -19,44 +19,8 @@ func runWallpaperFolderTests() {
     check(videoListing(of: [:]) != before, "a removed video is a change")
     check(videoListing(of: ["beach.mp4": start.addingTimeInterval(1)]) != before, "a replaced video is a change")
 
-    runFolderChangeActionTests()
     runSettleTests()
     runFolderSettlerTests()
-}
-
-private func action(
-    toPlay: URL?, current: URL?, exists: Bool, recovering: Bool = false, powerSaving: Bool = false
-) -> FolderChangeAction {
-    folderChangeAction(
-        toPlay: toPlay, current: current, currentExists: exists, isRecovering: recovering,
-        isPowerSaving: powerSaving)
-}
-
-private func runFolderChangeActionTests() {
-    let rain = URL(fileURLWithPath: "/v/rain.mp4")
-    let sea = URL(fileURLWithPath: "/v/sea.mp4")
-
-    // Healthy playback switches only to a different video to play.
-    checkEqual(action(toPlay: rain, current: rain, exists: true), .keepPlaying)
-    checkEqual(action(toPlay: sea, current: rain, exists: true), .switchTo(sea))
-    checkEqual(action(toPlay: sea, current: nil, exists: false), .switchTo(sea))
-
-    // The playing file vanished but another video is there: a logged Recovery that rebuilds now (the settle
-    // check already debounced the burst of folder events).
-    checkEqual(action(toPlay: sea, current: rain, exists: false), .rebuildNow(.fileMissing))
-
-    // No eligible video left: rest on the Poster (not a failure).
-    checkEqual(action(toPlay: nil, current: rain, exists: false), .restNoVideo)
-    checkEqual(action(toPlay: nil, current: nil, exists: false, recovering: true), .restNoVideo)
-
-    // A video is back (returned or newly added) while Recovery is pending or resting: rebuild now, not after backoff.
-    checkEqual(action(toPlay: rain, current: rain, exists: true, recovering: true), .rebuildNow(.videoAvailable))
-    checkEqual(action(toPlay: sea, current: rain, exists: true, recovering: true), .rebuildNow(.videoAvailable))
-
-    // In Low Power Mode nothing is built; leaving it rebuilds the video to play.
-    checkEqual(action(toPlay: sea, current: rain, exists: true, powerSaving: true), .holdForPower)
-    checkEqual(action(toPlay: sea, current: rain, exists: false, powerSaving: true), .holdForPower)
-    checkEqual(action(toPlay: nil, current: rain, exists: false, powerSaving: true), .holdForPower)
 }
 
 private func file(_ size: Int64, _ seconds: TimeInterval = 0) -> VideoFile {

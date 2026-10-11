@@ -1,18 +1,20 @@
 import AppKit
+import Application
 import AVFoundation
 import Core
+import SharedKernel
 
 // MARK: - Shared player
 // One decoder feeds every display: each window hosts an AVPlayerLayer bound to the same queue player, above
 // a Poster layer that shares one decoded image. Tearing the player down therefore reveals the Poster, never black.
 
-final class Player {
+package final class Player {
     /// Picks the video to play when a rebuild runs (the Rotation's Current video), so a deleted file is replaced.
-    var videoProvider: () -> URL? = { nil }
+    package var videoProvider: () -> URL? = { nil }
     /// Called when a rebuild switches to a different video, so its Poster can be regenerated.
-    var onVideoChange: (URL) -> Void = { _ in }
+    package var onVideoChange: (URL) -> Void = { _ in }
 
-    private(set) var video: URL?
+    package private(set) var video: URL?
     private var current: LoopingPlayer?
     private var observations: [NSKeyValueObservation] = []
     private var failureObserver: NSObjectProtocol?
@@ -29,7 +31,7 @@ final class Player {
     private var shouldBePlaying: Bool { gate.isIntendingToPlay && video != nil }
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
-    init() {
+    package init() {
         crossfader = PlayerCrossfader(layers: layers)
         crossfader.onCut = { [weak self] url in self?.show(url) }
         crossfader.onPromote = { [weak self] video in self?.adopt(video) }
@@ -52,7 +54,7 @@ final class Player {
     // MARK: - Playback
 
     /// Switches to `url` with a crossfade of `fade` seconds; zero, or a player nobody can see, means a cut.
-    func play(_ url: URL, fade: TimeInterval) {
+    package func play(_ url: URL, fade: TimeInterval) {
         // A torn-down or recovering player has no outgoing video on screen to fade from, so it cuts too.
         let isPlaying = gate.isIntendingToPlay && queuePlayer != nil && !isRecovering
         crossfader.request(url, duration: fade, current: video, isPlaying: isPlaying)
@@ -78,11 +80,11 @@ final class Player {
     }
 
     /// Goes through the rebuild plan so launching in Low Power Mode, or with no video, holds on the Poster.
-    func start() {
+    package func start() {
         runRebuildPlan(verb: "playing", cause: "launch")
     }
 
-    func resetBackoff(on event: RecoveryBackoff.ResetEvent) {
+    package func resetBackoff(on event: RecoveryBackoff.ResetEvent) {
         if backoff.reset(on: event, isPowerSaving: gate.isPowerSaving) {
             recover(cause: .retryAfterRest, detail: "on \(event.rawValue)")
         }
@@ -91,7 +93,7 @@ final class Player {
     // MARK: - Health
 
     /// Runs on the app's shared 5 s tick: compares playback time with the previous tick.
-    func healthTick() {
+    package func healthTick() {
         crossfader.tick()
         guard !isRecovering else { return }
         let seconds = playbackSeconds
@@ -105,7 +107,7 @@ final class Player {
     }
 
     /// Samples playback now and a moment later, logs the state, and rebuilds only if not actually playing.
-    func verifyPlayback(cause: String) {
+    package func verifyPlayback(cause: String) {
         let sampledPlayer = queuePlayer
         let earlier = playbackSeconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -170,7 +172,7 @@ extension Player {
 
     /// The folder's set of videos changed: resets the backoff, and rebuilds promptly if a video became available
     /// while recovering, rather than waiting out the backoff timer.
-    func folderChanged(toPlay: URL?, fade: TimeInterval) {
+    package func folderChanged(toPlay: URL?, fade: TimeInterval) {
         // Read before the reset: a rest after an exhausted backoff is still Recovery and must be retried now.
         let wasRecovering = isRecovering
         backoff.reset(on: .folderChange, isPowerSaving: gate.isPowerSaving)
@@ -242,7 +244,7 @@ extension Player {
 
 extension Player {
     /// Applies a deliberate reason to stop or start playing; the gate decides what that means for the player.
-    func apply(_ event: PlaybackEvent) {
+    package func apply(_ event: PlaybackGateEvent) {
         let decision = gate.apply(event, recovery: recoveryState)
         applyRecovery(decision.recovery)
         let action = decision.action
@@ -294,7 +296,7 @@ extension Player {
     /// A Poster layer with the video layer above it, sized to `frame`; the caller's window only hosts it.
     func makeLayers(frame: CGRect) -> CALayer { layers.make(frame: frame) }
 
-    func setPoster(_ image: CGImage) { layers.setPoster(image) }
+    package func setPoster(_ poster: PosterImage) { layers.setPoster(poster.image) }
 }
 
 // MARK: - Observation and state
@@ -353,3 +355,5 @@ extension Player {
 
     private func format(_ seconds: Double) -> String { String(format: "%.1f", seconds) }
 }
+
+extension Player: PlayerService {}

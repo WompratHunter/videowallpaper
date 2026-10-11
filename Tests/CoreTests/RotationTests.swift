@@ -1,5 +1,7 @@
 @testable import Core
 import Foundation
+import Rotation
+import SharedKernel
 
 // MARK: - Rotation tests
 // The user's four videos and their measured luminance anchor the expectations: lucyna and maomao are 0.016 apart,
@@ -12,6 +14,7 @@ func runRotationTests() {
     runSchedulingTests()
     runLibraryChangeTests()
     runDaylightTargetTests()
+    runAllowedTransitionTests()
 }
 
 /// SplitMix64: a deterministic RNG so every pick in these tests is reproducible.
@@ -28,7 +31,9 @@ struct SeededGenerator: RandomNumberGenerator {
 }
 
 func video(_ name: String, _ luminance: Double, modified: TimeInterval = 0) -> EligibleVideo {
-    EligibleVideo(name: name, modified: Date(timeIntervalSince1970: modified), meanLuminance: luminance)
+    EligibleVideo(
+        id: VideoID(name), version: Version(size: 1, modified: Date(timeIntervalSince1970: modified)),
+        meanLuminance: luminance)
 }
 
 let capybara = video("capybara.mp4", 0.299)
@@ -42,7 +47,7 @@ func names(_ videos: [EligibleVideo]) -> [String] { videos.map(\.name).sorted() 
 func situation(
     at now: TimeInterval,
     _ eligible: [EligibleVideo] = userVideos,
-    _ visibility: VisibilityState = .visible,
+    _ visibility: Presence = .visible,
     mode: RotationMode = .all,
     daylight: Double = 0,
     isPowerSaving: Bool = false
@@ -181,10 +186,10 @@ private func runDwellTests() {
     dwell.restart()
     checkEqual(dwell.elapsed, 0)
 
-    // Through the state: screens asleep and locked pause Dwell; occlusion (working in an opaque app) doesn't.
+    // Through the state: screens asleep and locked pause Dwell. Occlusion (working in an opaque app) isn't an input,
+    // so it can't.
     var state = playing(lucyna)
     var rng = SeededGenerator(state: 3)
-    state.apply(.everyWindowOccluded(true), at: 0)
     tick(&state, from: 0, until: 600)
     state.apply(.locked(true), at: 600)
     checkEqual(state.dwell.elapsed, 600)
@@ -334,4 +339,15 @@ private func runSwitchPointTests() {
     var pair = playing(lucyna, among: [lucyna, maomao])
     tick(&pair, from: 0, until: twentyMinutes + 10, [lucyna, maomao])
     check(pair.isSwitchPointNear(situation(at: twentyMinutes, [lucyna, maomao])), "Dwell met with somewhere to go")
+}
+
+private func runAllowedTransitionTests() {
+    let quick = AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: false)
+    let quickWithJump = AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: true)
+    let fallback = AllowedTransition(crossfade: 20, minimumDwell: 60 * 60, allowsBrightnessJump: false)
+    // A big brightness jump only when nobody watches; Veiled is still seen through the glass.
+    checkEqual(allowedTransition(for: .unseen), quickWithJump)
+    checkEqual(allowedTransition(for: .veiled), quick)
+    // Visible only via the slow fallback after an hour.
+    checkEqual(allowedTransition(for: .visible), fallback)
 }

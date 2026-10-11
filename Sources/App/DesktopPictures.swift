@@ -1,46 +1,25 @@
 import AppKit
+import Application
 import Core
-
-// MARK: - Where the app keeps its files
-// Everything the app writes lives under Application Support; the Wallpaper folder holds only the user's videos.
-
-enum AppFiles {
-    static let wallpaperDirectory = debugFolder
-        ?? URL(fileURLWithPath: NSString("~/Movies/LiveWallpaper").expandingTildeInPath)
-    /// A debug run on its own folder keeps its cache and Posters beside it, so it can't prune the installed app's.
-    static let supportDirectory = debugFolder.map {
-        $0.deletingLastPathComponent().appendingPathComponent("\($0.lastPathComponent)-support", isDirectory: true)
-    } ?? FileManager.default
-        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("VideoWallpaper", isDirectory: true)
-    static let posterDirectory = supportDirectory.appendingPathComponent("posters", isDirectory: true)
-    static let analysisCacheFile = supportDirectory.appendingPathComponent("analysis-cache.json")
-    static let originalsFile = supportDirectory.appendingPathComponent("original-desktop-pictures.json")
-    static let locationCacheFile = supportDirectory.appendingPathComponent("location.json")
-    /// Written into the Wallpaper folder by versions before Posters moved to Application Support.
-    static let legacyPoster = wallpaperDirectory.appendingPathComponent(".poster.jpg")
-    static let defaultDesktopPicture = URL(fileURLWithPath: "/System/Library/CoreServices/DefaultDesktop.heic")
-
-    static let ownPictures = OwnPictures(
-        posterDirectory: posterDirectory.resolvingSymlinksInPath().path,
-        legacyPoster: legacyPoster.resolvingSymlinksInPath().path)
-
-    /// A manual test's Wallpaper folder, `VIDEOWALLPAPER_FOLDER`, honoured only by a `make debug` build.
-    private static var debugFolder: URL? {
-        #if DEBUG
-        return ProcessInfo.processInfo.environment["VIDEOWALLPAPER_FOLDER"].map {
-            URL(fileURLWithPath: $0, isDirectory: true)
-        }
-        #else
-        return nil
-        #endif
-    }
-}
+import Desktop
 
 // MARK: - Desktop pictures per screen
 // NSWorkspace reads and sets the picture of the current Space only; other Spaces keep whatever they had.
 
-package enum DesktopPictures {
+package final class DesktopPictures {
+    /// Where the user's own pictures are recorded, in Application Support.
+    private let originalsFile: URL
+    /// The app's own Posters, never recorded as an original.
+    private let ownPictures: OwnPictures
+    /// Restored when a screen has no recorded original.
+    private let defaultPicture: URL
+
+    package init(originalsFile: URL, ownPictures: OwnPictures, defaultPicture: URL) {
+        self.originalsFile = originalsFile
+        self.ownPictures = ownPictures
+        self.defaultPicture = defaultPicture
+    }
+
     /// The current picture of every connected screen, keyed by a stable screen identifier.
     private static func current() -> [String: DesktopPicture] {
         var pictures: [String: DesktopPicture] = [:]
@@ -55,32 +34,34 @@ package enum DesktopPictures {
     }
 
     /// The main screen's current picture, a stand-in underlay while the first Analysis runs.
-    static func mainScreenPicture() -> URL? {
+    package func mainScreenPicture() -> URL? {
         NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0) }
     }
 
     /// Sets the Poster on every screen, first recording any original picture not yet recorded.
-    static func setPoster(_ poster: URL) {
+    package func setPoster(_ poster: URL) {
         recordOriginals()
         for screen in NSScreen.screens {
             do {
                 try NSWorkspace.shared.setDesktopImageURL(poster, for: screen, options: [:])
             } catch {
-                Log.write("desktop-picture", "cannot set Poster on \(key(for: screen)): \(error.localizedDescription)")
+                Log.write(
+                    "desktop-picture", "cannot set Poster on \(Self.key(for: screen)): \(error.localizedDescription)")
             }
         }
     }
 
     /// Saves the user's own pictures before this app first replaces them; earlier records are never overwritten.
-    static func recordOriginals() {
+    package func recordOriginals() {
         let existing = loadOriginals()
         // An unreadable record is kept as it is: rewriting it could replace the true originals with our Poster.
-        if existing == nil && FileManager.default.fileExists(atPath: AppFiles.originalsFile.path) { return }
-        guard let record = originalsToRecord(existing: existing, current: current(), ownPictures: AppFiles.ownPictures)
+        if existing == nil && FileManager.default.fileExists(atPath: originalsFile.path) { return }
+        guard let record = originalsToRecord(existing: existing, current: Self.current(), ownPictures: ownPictures)
         else { return }
         do {
-            try FileManager.default.createDirectory(at: AppFiles.supportDirectory, withIntermediateDirectories: true)
-            try record.json().write(to: AppFiles.originalsFile, options: .atomic)
+            try FileManager.default.createDirectory(
+                at: originalsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try record.json().write(to: originalsFile, options: .atomic)
             Log.write("desktop-picture", "recorded originals for screens=\(record.screens.keys.sorted())")
         } catch {
             Log.write("desktop-picture", "cannot record originals: \(error.localizedDescription)")
@@ -89,23 +70,24 @@ package enum DesktopPictures {
 
     /// The `--restore-wallpaper` command: puts back the original picture on every screen showing our Poster.
     /// Returns the process exit status.
-    package static func restoreOriginals() -> Int32 {
+    package func restoreOriginals() -> Int32 {
         let originals = loadOriginals()
-        let fallback = DesktopPicture(path: AppFiles.defaultDesktopPicture.path, options: DesktopPictureOptions())
+        let fallback = DesktopPicture(path: defaultPicture.path, options: DesktopPictureOptions())
         let plan = restorePlan(
-            originals: originals, current: current(), ownPictures: AppFiles.ownPictures, fallback: fallback
+            originals: originals, current: Self.current(), ownPictures: ownPictures, fallback: fallback
         ) {
             FileManager.default.fileExists(atPath: $0)
         }
         var status: Int32 = 0
         for screen in NSScreen.screens {
-            guard let picture = plan[key(for: screen)] else { continue }
+            guard let picture = plan[Self.key(for: screen)] else { continue }
             do {
                 try NSWorkspace.shared.setDesktopImageURL(
-                    URL(fileURLWithPath: picture.path), for: screen, options: workspaceOptions(from: picture.options))
-                Log.write("restore", "screen=\(key(for: screen)) picture=\(picture.path)")
+                    URL(fileURLWithPath: picture.path), for: screen,
+                    options: Self.workspaceOptions(from: picture.options))
+                Log.write("restore", "screen=\(Self.key(for: screen)) picture=\(picture.path)")
             } catch {
-                Log.write("restore", "screen=\(key(for: screen)) failed: \(error.localizedDescription)")
+                Log.write("restore", "screen=\(Self.key(for: screen)) failed: \(error.localizedDescription)")
                 status = 1
             }
         }
@@ -114,10 +96,10 @@ package enum DesktopPictures {
     }
 
     /// The recorded originals; nil when none were recorded, or (logged) when the record can't be read.
-    private static func loadOriginals() -> OriginalPictures? {
-        guard let data = try? Data(contentsOf: AppFiles.originalsFile) else { return nil }
+    private func loadOriginals() -> OriginalPictures? {
+        guard let data = try? Data(contentsOf: originalsFile) else { return nil }
         guard let originals = OriginalPictures(json: data) else {
-            Log.write("desktop-picture", "cannot read \(AppFiles.originalsFile.path)")
+            Log.write("desktop-picture", "cannot read \(originalsFile.path)")
             return nil
         }
         return originals
@@ -157,4 +139,8 @@ package enum DesktopPictures {
         }
         return raw
     }
+}
+
+extension DesktopPictures: DesktopService {
+    package var slice: DesktopSlice { DesktopSlice() }
 }

@@ -136,3 +136,28 @@ package struct RecoveryBackoff {
         return wasResting && !isPowerSaving
     }
 }
+
+// MARK: - Folder change decision
+
+package enum FolderChangeAction: Equatable {
+    case keepPlaying
+    case switchTo(URL)
+    /// Show the Poster and rebuild at once, replacing any backoff timer. The settle check already debounced
+    /// the burst of folder events, so no further delay is needed.
+    case rebuildNow(RecoveryCause)
+    case restNoVideo
+    /// Low Power Mode: no player is built; leaving it rebuilds the Rotation's Current video.
+    case holdForPower
+}
+
+/// What to do when the folder's set of settled videos changes. `isRecovering` covers a pending rebuild and any rest on
+/// the Poster; a video becoming available then rebuilds promptly instead of waiting out the backoff.
+package func folderChangeAction(
+    toPlay: URL?, current: URL?, currentExists: Bool, isRecovering: Bool, isPowerSaving: Bool
+) -> FolderChangeAction {
+    if isPowerSaving { return .holdForPower }
+    guard let toPlay else { return .restNoVideo }
+    if current != nil && !currentExists { return .rebuildNow(.fileMissing) }
+    if isRecovering { return .rebuildNow(.videoAvailable) }
+    return toPlay == current ? .keepPlaying : .switchTo(toPlay)
+}
