@@ -40,8 +40,9 @@ struct DesktopRoutingTests {
         app.desktop.pictures.show(city, on: "side")
         app.coordinator.launch()
 
-        // Recorded at launch, before anything could change the desktop picture.
+        // Recorded once at launch, before anything could change the desktop picture.
         #expect(app.events.first == .desktop(.originalsRecorded(screens: ["main", "side"])))
+        #expect(desktopEvents(app) == [.originalsRecorded(screens: ["main", "side"])])
         #expect(app.desktop.posters.isEmpty)
 
         // A screen connected since is recorded before the Poster replaces its picture.
@@ -66,6 +67,44 @@ struct DesktopRoutingTests {
             .posterSet(poster, screens: ["main", "side"])
         ])
         #expect(app.coordinator.snapshot.desktop.recordedScreens == ["side"])
+    }
+
+    /// Rewriting a record that can't be read could replace the true originals with our Poster, so it is kept.
+    @Test func anUnreadableRecordIsKeptAndReported() throws {
+        let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
+        app.desktop.pictures.show(beach, on: "main")
+        let unreadable = Data("not json".utf8)
+        app.desktop.originals.data = unreadable
+        app.coordinator.launch()
+        let video = try #require(app.player.video)
+        app.library.deliverPoster(for: video, file: poster)
+
+        let location = app.desktop.originals.location
+        #expect(desktopEvents(app) == [
+            .originalsUnreadable(location: location),
+            .originalsUnreadable(location: location),
+            .posterSet(poster, screens: ["main"])
+        ])
+        #expect(app.desktop.originals.data == unreadable)
+    }
+
+    @Test func aRecordThatCannotBeWrittenAndARefusedScreenAreReported() throws {
+        let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
+        app.desktop.pictures.show(beach, on: "main")
+        app.desktop.pictures.show(city, on: "side")
+        app.desktop.originals.refusesWrites = true
+        app.desktop.pictures.refusing = ["side"]
+        app.coordinator.launch()
+        let video = try #require(app.player.video)
+        app.library.deliverPoster(for: video, file: poster)
+
+        #expect(desktopEvents(app) == [
+            .originalsNotRecorded(reason: "refused"),
+            .originalsNotRecorded(reason: "refused"),
+            .posterNotSet(screen: "side", reason: "refused"),
+            .posterSet(poster, screens: ["main"])
+        ])
+        #expect(app.coordinator.snapshot.desktop == DesktopSlice(recordedScreens: [], poster: poster))
     }
 
     @Test func restoreTouchesOnlyScreensShowingOurPoster() throws {
