@@ -2,7 +2,8 @@ import Foundation
 
 // MARK: - Daylight
 // How bright it is outdoors where the Mac is, from the sun's position alone: computed here from coordinates and the
-// time, with no network. The Rotation aims its pick at this (the Target brightness) in `dynamic` Mode.
+// time, with no network. The Rotation aims its pick at this (the Target brightness) in `dynamic` Mode, through the
+// coordinator, which hands it only the level and its source.
 
 package struct Coordinates: Equatable, Codable {
     package let latitude: Double
@@ -69,15 +70,12 @@ package func daylightLevel(at date: Date, at place: Coordinates) -> Double {
     daylightLevel(solarElevation: solarElevation(at: date, at: place))
 }
 
-// MARK: - Target brightness
+// MARK: - Appearance
 
-/// Each video's place from darkest (0) to brightest (1), evenly spaced whatever the luminance gaps, so the Target
-/// brightness means the same with any library. Ties go by name so the order is stable; a lone video sits at 0.5.
-package func brightnessRanks(_ videos: [EligibleVideo]) -> [String: Double] {
-    let sorted = videos.sorted { ($0.meanLuminance, $0.name) < ($1.meanLuminance, $1.name) }
-    let last = Double(max(sorted.count - 1, 1))
-    let pairs = sorted.enumerated().map { ($1.name, sorted.count == 1 ? 0.5 : Double($0) / last) }
-    return Dictionary(pairs) { first, _ in first }
+/// The system appearance, Daylight's stand-in when there is no place to compute the sun for.
+package enum Appearance: String {
+    case light
+    case dark
 }
 
 // MARK: - Location

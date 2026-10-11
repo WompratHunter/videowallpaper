@@ -1,5 +1,6 @@
 @testable import Core
 import Foundation
+import SharedKernel
 
 // MARK: - Visibility classification tests
 
@@ -10,7 +11,6 @@ func runVisibilityClassificationTests() {
     runCoveringWindowTests()
     runVeilTrackerTests()
     runVisibilityTrackerTests()
-    runAllowedTransitionTests()
 }
 
 private func runOcclusionTests() {
@@ -142,15 +142,4 @@ private func runVisibilityTrackerTests() {
     checkEqual(covered.state, .veiled)
     checkEqual(covered.apply(.everyWindowOccluded(true), at: start + 31), .unseen)
     checkEqual(covered.apply(.everyWindowOccluded(false), at: start + 32), .veiled)
-}
-
-private func runAllowedTransitionTests() {
-    let quick = AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: false)
-    let quickWithJump = AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: true)
-    let fallback = AllowedTransition(crossfade: 20, minimumDwell: 60 * 60, allowsBrightnessJump: false)
-    // A big brightness jump only when nobody watches; Veiled is still seen through the glass.
-    checkEqual(allowedTransition(for: .unseen), quickWithJump)
-    checkEqual(allowedTransition(for: .veiled), quick)
-    // Visible only via the slow fallback after an hour.
-    checkEqual(allowedTransition(for: .visible), fallback)
 }

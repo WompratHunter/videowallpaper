@@ -1,34 +1,19 @@
-@testable import Core
 import Foundation
 import Testing
 
 // MARK: - Legacy suites
-// Every area's check-based suite runs here, in one test, so all of them still gate `make build`. Every area has a
-// suite (some still empty), so a ticket adds checks to its own file without editing this one. New tests are native
-// swift-testing `@Test`s.
+// The check-based suites, one test per context in `LegacySuites+<Context>.swift`, so every check still gates
+// `make build` and a context's ticket deletes its own file once its suites are native swift-testing in its context's
+// test target. Serialized, because the check counters are shared. New tests are native `@Test`s.
 
-@Test func everyLegacySuite() {
-    // Shared
-    runLogTests()
-    // Player: Recovery, the playback gate, the wake/unlock state line and the crossfade
-    runRecoveryTests()
-    runPlaybackGateTests()
-    runPlayerStateReportTests()
-    runCrossfadeTests()
-    // Library: Wallpaper folder, settle, Poster files, flash screening, Analysis cache
-    runWallpaperFolderTests()
-    runPosterFilesTests()
-    runFlashTests()
-    runAnalysisCacheTests()
-    // Visibility
-    runVisibilityClassificationTests()
-    // Daylight: sun position, the Daylight curve and where the location comes from
-    runDaylightTests()
-    // Rotation
-    runRotationTests()
-    // Footprint: original desktop pictures and restore
-    runFootprintTests()
-    let summary = "\(checkCount - failedCheckCount)/\(checkCount) checks passed\n"
-    FileHandle.standardError.write(Data(summary.utf8))
-    #expect(checkCount > 0)
+@Suite(.serialized)
+struct LegacySuites {
+    /// Runs one context's suites; any failed check has already recorded an issue at its own line.
+    static func run(_ context: String, _ suites: () -> Void) {
+        resetCheckCounts()
+        suites()
+        let summary = "\(context): \(checkCount - failedCheckCount)/\(checkCount) checks passed\n"
+        FileHandle.standardError.write(Data(summary.utf8))
+        #expect(checkCount > 0)
+    }
 }

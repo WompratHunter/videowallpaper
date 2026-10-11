@@ -1,5 +1,8 @@
 import AppKit
+import Application
 import Core
+import Presence
+import SharedKernel
 
 // MARK: - Visibility
 // Whether the Live wallpaper can be seen: Unseen, Veiled or Visible (see CONTEXT.md). Unseen follows notifications
@@ -9,21 +12,23 @@ import Core
 
 package final class Visibility {
     /// Called on the main queue whenever `state` changes.
-    var onChange: (VisibilityState) -> Void = { _ in }
+    package var onChange: (Presence) -> Void = { _ in }
 
-    var state: VisibilityState { tracker.state }
+    package var state: Presence { tracker.state }
     private var tracker = VisibilityTracker()
     private var veilExpiry: DispatchWorkItem?
 
+    package init() {}
+
     /// Main queue only.
-    func apply(_ event: VisibilityEvent, cause: String) {
+    package func apply(_ event: VisibilityEvent, cause: String) {
         report(tracker.apply(event, at: Date()), cause: cause, detail: "\(event)")
     }
 
     /// Samples window coverage and returns the state that follows. Call it on every tick while a switch is due:
     /// Veiled needs 30 s of continuous samples. Main queue only.
     @discardableResult
-    func checkVeil() -> VisibilityState {
+    package func checkVeil() -> Presence {
         sampleCoverage()
         return state
     }
@@ -51,7 +56,7 @@ package final class Visibility {
         DispatchQueue.main.asyncAfter(deadline: .now() + VeilTracker.maxSampleGap + 1, execute: expiry)
     }
 
-    private func report(_ change: VisibilityState?, cause: String, detail: String) {
+    private func report(_ change: Presence?, cause: String, detail: String) {
         guard let change else { return }
         Log.write(cause, "visibility=\(change.rawValue) \(detail)")
         onChange(change)
@@ -92,6 +97,10 @@ package final class Visibility {
     private static func percent(_ fraction: Double) -> String {
         String(format: "%.1f%%", fraction * 100)
     }
+}
+
+extension Visibility: PresenceService {
+    package var slice: PresenceSlice { PresenceSlice() }
 }
 
 // MARK: - Veil probe

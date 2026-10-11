@@ -22,6 +22,7 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
     }
 
     private let cacheFile: URL
+    private let posterDirectory: URL
     private var cache = AnalysisCache()
     /// Settled videos not yet analysed, newest first, with the file they were when queued.
     private var pending: [(video: URL, file: VideoFile)] = []
@@ -31,8 +32,9 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
     /// Videos whose Analysis failed (see `key`): retried only once the file changes.
     private var failed: Set<String> = []
 
-    init(cacheFile: URL) {
+    init(cacheFile: URL, posterDirectory: URL) {
         self.cacheFile = cacheFile
+        self.posterDirectory = posterDirectory
     }
 
     func loadCache() {
@@ -70,7 +72,7 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
         guard running == nil, !isPowerSaving, !pending.isEmpty else { return }
         let (video, file) = pending.removeFirst()
         running = Self.key(video, file)
-        let poster = AppFiles.posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
+        let poster = posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
         job = Task.detached(priority: .utility) {
             let start = Date()
             let outcome: Result<Analysis, Error>
@@ -114,7 +116,8 @@ final class LibraryAnalysisQueue: @unchecked Sendable {
 
     private func saveCache() {
         do {
-            try FileManager.default.createDirectory(at: AppFiles.supportDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try cache.json().write(to: cacheFile, options: .atomic)
         } catch {
             Log.write("analysis", "cannot save cache: \(error.localizedDescription)")

@@ -106,7 +106,7 @@ private func runGateRecoveryStateTests() {
 
 /// Recovery must never treat a deliberate pause or tear-down as a stuck player.
 private func runGateRecoveryIntentTests() {
-    let events: [PlaybackEvent] = [.lowPower(true), .allWindowsOccluded(true), .screensAsleep(true)]
+    let events: [PlaybackGateEvent] = [.lowPower(true), .allWindowsOccluded(true), .screensAsleep(true)]
     for event in events {
         var gate = PlaybackGate()
         _ = gate.apply(event, recovery: idle)

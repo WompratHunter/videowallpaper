@@ -1,35 +1,18 @@
 import Foundation
+import Rotation
+import SharedKernel
 
 // MARK: - Rotation
-// Which video plays next, and when. A switch waits for Dwell (awake, unlocked time) and for a moment the Visibility
+// Which video plays next, and when. A switch waits for Dwell (awake, unlocked time) and for a moment the Presence
 // allows (see `allowedTransition(for:)`); the next video is random among the unplayed-this-Pass videos of similar
 // brightness, and a large brightness jump waits until nobody can see it. Every decision is here, with its state, so
-// the app only gathers inputs (clock, RNG, settings, appearance, Visibility) and applies the switch.
+// the app only gathers inputs (clock, RNG, settings, Daylight, Presence) and applies the switch.
 
 package enum RotationMode: String, CaseIterable {
     case all
     case light
     case dark
     case dynamic
-}
-
-package enum Appearance: String {
-    case light
-    case dark
-}
-
-package enum RotationRules {
-    /// The largest mean-luminance difference a switch may make while anyone could see it.
-    package static let brightnessBand = 0.08
-    /// With fewer videos, aiming `dynamic` at the Target brightness would leave too little to rotate: it acts as `all`.
-    package static let minimumForDaylight = 4
-    /// `dynamic` picks at random among unplayed videos this close to the Target brightness, in rank.
-    package static let targetWindow = 0.15
-    /// Further than this from the Target brightness, in rank, the Current video goes at the next Unseen or Veiled
-    /// moment without waiting for Dwell. Wide enough that dusk is followed by ordinary Dwell switches.
-    package static let offTarget = 0.4
-    /// Exactly 0.08 apart is within the band, whatever the floating-point rounding.
-    package static let tolerance = 1e-9
 }
 
 /// The `Mode` setting, read live. Missing or unknown: `dynamic` when the appearance switches automatically, as
@@ -42,14 +25,9 @@ package func rotationMode(setting: String?, isAutoAppearance: Bool) -> RotationM
 /// The videos the Mode allows: the darker or brighter half by median luminance (a video at the median is in both),
 /// or every video. `dynamic` allows every video and aims its pick at the Target brightness instead.
 package func modeCandidates(_ videos: [EligibleVideo], mode: RotationMode) -> [EligibleVideo] {
-    let half: Appearance
-    switch mode {
-    case .all, .dynamic: return videos
-    case .light: half = .light
-    case .dark: half = .dark
-    }
+    guard mode == .light || mode == .dark else { return videos }
     let median = medianLuminance(of: videos)
-    return videos.filter { half == .dark ? $0.meanLuminance <= median : $0.meanLuminance >= median }
+    return videos.filter { mode == .dark ? $0.meanLuminance <= median : $0.meanLuminance >= median }
 }
 
 private func medianLuminance(of videos: [EligibleVideo]) -> Double {
@@ -120,16 +98,6 @@ package struct Dwell {
 
 // MARK: - Switch decision
 
-package enum SwitchReason: String {
-    case firstVideo = "first-video"
-    case currentRemoved = "current-removed"
-    case newVideo = "new-video"
-    case modeChange = "mode-change"
-    case offTarget = "off-target"
-    case dwell
-    case visibleFallback = "visible-fallback"
-}
-
 package struct RotationSwitch: Equatable {
     package let from: EligibleVideo?
     package let to: EligibleVideo
@@ -152,7 +120,7 @@ package enum RotationOutcome: Equatable {
 package struct RotationSituation {
     package var now: TimeInterval
     package var eligible: [EligibleVideo] { didSet { ranks = brightnessRanks(eligible) } }
-    package var visibility: VisibilityState
+    package var visibility: Presence
     package var mode: RotationMode
     /// Daylight, used as the Target brightness (a rank) when `followsDaylight`.
     package var daylight: Double
@@ -163,7 +131,7 @@ package struct RotationSituation {
     package init(
         now: TimeInterval,
         eligible: [EligibleVideo],
-        visibility: VisibilityState,
+        visibility: Presence,
         mode: RotationMode,
         daylight: Double,
         isPowerSaving: Bool = false
@@ -192,9 +160,22 @@ package struct RotationSituation {
     package func eligible(named name: String) -> EligibleVideo? { eligible.first { $0.name == name } }
 }
 
-extension VisibilityInputs {
-    /// Asleep, locked or switched away: not awake, unlocked time, so Dwell doesn't count.
-    package var isAwayFromDesk: Bool { areScreensAsleep || isLocked || isSessionInactive }
+/// Whether the user is away from the desk (see `AwayFromDesk`): asleep, locked or switched away is not awake,
+/// unlocked time, so Dwell doesn't count.
+package struct DeskState: Equatable {
+    package var areScreensAsleep = false
+    package var isSessionInactive = false
+    package var isLocked = false
+
+    package var isAway: Bool { areScreensAsleep || isLocked || isSessionInactive }
+
+    package mutating func apply(_ event: AwayFromDesk) {
+        switch event {
+        case .screensAsleep(let isOn): areScreensAsleep = isOn
+        case .sessionInactive(let isOn): isSessionInactive = isOn
+        case .locked(let isOn): isLocked = isOn
+        }
+    }
 }
 
 // MARK: - Rotation state
@@ -211,7 +192,7 @@ package struct RotationState {
     private var pendingNew: [String] = []
     private var known: Set<String>
     private var lastEligible: Set<String> = []
-    private var desk = VisibilityInputs()
+    private var desk = DeskState()
     /// The Current video was newly added: it plays whatever the Mode, so being outside the preferred half doesn't cut
     /// its Dwell short.
     private var isCurrentNew = false
@@ -222,11 +203,11 @@ package struct RotationState {
         self.dwellScale = dwellScale
     }
 
-    /// Lock, screen sleep and session changes stop and start Dwell. Occlusion doesn't: working in an opaque app is
-    /// still awake, unlocked time.
-    package mutating func apply(_ event: VisibilityEvent, at now: TimeInterval) {
+    /// Lock, screen sleep and session changes stop and start Dwell. Occlusion isn't an input: working in an opaque
+    /// app is still awake, unlocked time.
+    package mutating func apply(_ event: AwayFromDesk, at now: TimeInterval) {
         desk.apply(event)
-        dwell.advance(to: now, isCounting: !desk.isAwayFromDesk)
+        dwell.advance(to: now, isCounting: !desk.isAway)
     }
 
     /// Whether the next Unseen or Veiled moment would switch, so the app samples window coverage for Veiled.
@@ -240,7 +221,7 @@ package struct RotationState {
     package mutating func decide(
         _ situation: RotationSituation, using rng: inout some RandomNumberGenerator
     ) -> RotationOutcome {
-        dwell.advance(to: situation.now, isCounting: !desk.isAwayFromDesk)
+        dwell.advance(to: situation.now, isCounting: !desk.isAway)
         noteLibrary(situation.eligible)
         guard let previous = current else { return startRotation(situation, using: &rng) }
         guard let current = situation.eligible(named: previous.name) else {
@@ -278,7 +259,7 @@ package struct RotationState {
         pendingNew.first.flatMap(situation.eligible(named:))
     }
 
-    private func minimumDwell(for state: VisibilityState) -> TimeInterval {
+    private func minimumDwell(for state: Presence) -> TimeInterval {
         allowedTransition(for: state).minimumDwell * dwellScale
     }
 
@@ -304,7 +285,7 @@ package struct RotationState {
             ?? pick(from: nil, situation, allowsBigJump: true, using: &rng)?.video
         else { return .stay }
         return commit(
-            (next, startsPass: true), from: nil, reason: .firstVideo, fade: Crossfade.quickDuration,
+            (next, startsPass: true), from: nil, reason: .firstVideo, fade: RotationRules.quickFade,
             situation: situation)
     }
 
@@ -317,7 +298,7 @@ package struct RotationState {
             ?? pick(from: removed, situation, allowsBigJump: true, using: &rng)
         guard let pick else { return .stay }
         return commit(
-            pick, from: removed, reason: .currentRemoved, fade: Crossfade.quickDuration, situation: situation)
+            pick, from: removed, reason: .currentRemoved, fade: RotationRules.quickFade, situation: situation)
     }
 
     private mutating func commit(

@@ -4,7 +4,7 @@ import Foundation
 // Combines every deliberate reason not to play into one state, so the player's pause/resume/tear-down and
 // Recovery's "intends to play" come from a single tested decision rather than scattered flags.
 
-package enum PlaybackEvent: Equatable {
+package enum PlaybackGateEvent: Equatable {
     case lowPower(Bool)
     case screensAsleep(Bool)
     case allWindowsOccluded(Bool)
@@ -67,7 +67,7 @@ package struct PlaybackGate {
     /// Low Power Mode drops a pending rebuild and a no-video rest, because leaving it rebuilds (re-picking the
     /// video) anyway; an exhausted backoff survives, so leaving does not retry a broken file before wake,
     /// unlock or a folder change.
-    package mutating func apply(_ event: PlaybackEvent, recovery: RecoveryState) -> PlaybackDecision {
+    package mutating func apply(_ event: PlaybackGateEvent, recovery: RecoveryState) -> PlaybackDecision {
         let before = mode
         switch event {
         case .lowPower(let isOn): isLowPower = isOn

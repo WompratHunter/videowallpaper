@@ -1,5 +1,6 @@
 @testable import Core
 import Foundation
+import SharedKernel
 
 // MARK: - Analysis cache tests: lookup, encode/decode, prune, eligibility, Analysis order
 
@@ -65,15 +66,17 @@ private func runEligibleVideoTests() {
     let older = Date(timeIntervalSince1970: 1_000)
     let newer = Date(timeIntervalSince1970: 2_000)
     let settled = ["rain.mp4": older, "strobe.mp4": newer, "pending.mp4": newer]
+    let file = { (modified: Date) in VideoFile(size: 1_000, modified: modified) }
+    let files = settled.mapValues(file)
     let analyses = ["rain.mp4": rain, "strobe.mp4": strobe]
     checkEqual(
-        screenEligible(settled: settled, analyses: analyses, overrides: []),
-        [EligibleVideo(name: "rain.mp4", modified: older, meanLuminance: 0.16)])
+        screenEligible(settled: files, analyses: analyses, overrides: []),
+        [EligibleVideo(id: VideoID("rain.mp4"), version: Version(size: 1_000, modified: older), meanLuminance: 0.16)])
     checkEqual(
-        screenEligible(settled: settled, analyses: analyses, overrides: ["strobe.mp4"]).map(\.name),
+        screenEligible(settled: files, analyses: analyses, overrides: ["strobe.mp4"]).map(\.name),
         ["rain.mp4", "strobe.mp4"])
     // An analysis for a video no longer settled is ignored.
-    checkEqual(screenEligible(settled: ["pending.mp4": newer], analyses: analyses, overrides: []), [])
+    checkEqual(screenEligible(settled: ["pending.mp4": file(newer)], analyses: analyses, overrides: []), [])
     // Stand-ins at launch: the unanalysed video counts (its Poster is a still), the Excluded one doesn't.
     checkEqual(notExcludedNewestFirst(settled: settled, analyses: analyses, overrides: []), ["pending.mp4", "rain.mp4"])
     checkEqual(

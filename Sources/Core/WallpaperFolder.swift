@@ -1,4 +1,5 @@
 import Foundation
+import SharedKernel
 
 // MARK: - Wallpaper folder listing
 // Only the user's videos count as a folder change. Finder's .DS_Store (and an older version's hidden Poster) also
@@ -28,7 +29,9 @@ package struct VideoFile: Equatable {
     }
 
     /// Whole milliseconds, so a date read back from disk or JSON compares equal to the original.
-    package var modifiedMilliseconds: Int64 { Int64((modified.timeIntervalSince1970 * 1000).rounded()) }
+    package var modifiedMilliseconds: Int64 { version.modifiedMilliseconds }
+
+    package var version: Version { Version(size: size, modified: modified) }
 }
 
 /// Videos whose non-zero size is the same in both snapshots, with their latest modification date.
@@ -81,29 +84,4 @@ package struct FolderSettler {
         baseline = inFlux ? snapshot : nil
         return SettleOutcome(isReadyChanged: ready != before, needsAnotherCheck: inFlux)
     }
-}
-
-// MARK: - Folder change decision
-
-package enum FolderChangeAction: Equatable {
-    case keepPlaying
-    case switchTo(URL)
-    /// Show the Poster and rebuild at once, replacing any backoff timer. The settle check already debounced
-    /// the burst of folder events, so no further delay is needed.
-    case rebuildNow(RecoveryCause)
-    case restNoVideo
-    /// Low Power Mode: no player is built; leaving it rebuilds the Rotation's Current video.
-    case holdForPower
-}
-
-/// What to do when the folder's set of settled videos changes. `isRecovering` covers a pending rebuild and any rest on
-/// the Poster; a video becoming available then rebuilds promptly instead of waiting out the backoff.
-package func folderChangeAction(
-    toPlay: URL?, current: URL?, currentExists: Bool, isRecovering: Bool, isPowerSaving: Bool
-) -> FolderChangeAction {
-    if isPowerSaving { return .holdForPower }
-    guard let toPlay else { return .restNoVideo }
-    if current != nil && !currentExists { return .rebuildNow(.fileMissing) }
-    if isRecovering { return .rebuildNow(.videoAvailable) }
-    return toPlay == current ? .keepPlaying : .switchTo(toPlay)
 }

@@ -1,35 +1,30 @@
 import AppKit
 import AVFoundation
 import Core
+import SharedKernel
 
 // MARK: - Posters for the window underlay, Mission Control and the Lock screen
 // Kept in Application Support, one per video (see PosterFiles.swift), never in the Wallpaper folder.
-
-/// A video's Poster image, with its saved file when there is one (the file is what becomes the desktop picture).
-struct PosterImage {
-    let image: CGImage
-    let file: URL?
-}
 
 extension Library {
     /// The launch underlay, read synchronously so the window is never empty while the player starts or while the
     /// first Analysis runs: the saved Poster of the video to play, else of another video that isn't Excluded, else
     /// the desktop picture, else any saved Poster (see `underlayCandidates`).
-    func launchUnderlay(toPlay video: URL?, desktopPicture: URL?) -> CGImage? {
-        let saved = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
+    package func launchUnderlay(toPlay video: URL?, desktopPicture: URL?) -> PosterImage? {
+        let saved = (try? FileManager.default.contentsOfDirectory(atPath: posterDirectory.path)) ?? []
         let candidates = underlayCandidates(
-            toPlay: video.flatMap(Self.posterURL)?.lastPathComponent,
-            waiting: videosNotExcluded().compactMap { Self.posterURL(for: $0)?.lastPathComponent },
+            toPlay: video.flatMap { Self.posterURL(for: $0, in: posterDirectory) }?.lastPathComponent,
+            waiting: videosNotExcluded().compactMap { Self.posterURL(for: $0, in: posterDirectory)?.lastPathComponent },
             saved: saved)
         for candidate in candidates {
             let url: URL?
             switch candidate {
-            case .poster(let name): url = AppFiles.posterDirectory.appendingPathComponent(name)
+            case .poster(let name): url = posterDirectory.appendingPathComponent(name)
             case .desktopPicture: url = desktopPicture
             }
             guard let url, let image = Self.loadImage(url) else { continue }
             if video == nil { Log.write("launch", "no screened video yet; underlay=\(url.lastPathComponent)") }
-            return image
+            return PosterImage(image: image, file: url)
         }
         Log.write("launch", "no Poster or desktop picture to show under the video")
         return nil
@@ -38,9 +33,10 @@ extension Library {
     /// Reuses the video's saved Poster (normally saved by its Analysis), or exports and saves one, then calls `use` on
     /// the main queue. `use` returns false when the video is no longer wanted; a used Poster prunes the stale ones.
     /// Decoding a 4K JPEG takes long enough to stall the main thread, so the saved Poster is read in the background.
-    func poster(for video: URL, use: @escaping (PosterImage) -> Bool) {
+    package func poster(for video: URL, use: @escaping (PosterImage) -> Bool) {
+        let posterDirectory = posterDirectory
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let poster = Self.posterURL(for: video) else { return }
+            guard let poster = Self.posterURL(for: video, in: posterDirectory) else { return }
             guard let image = Self.loadImage(poster) else {
                 DispatchQueue.main.async { [weak self] in self?.exportPoster(from: video, to: poster, use: use) }
                 return
@@ -77,7 +73,8 @@ extension Library {
         let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.85])
         do {
             guard let data else { throw CocoaError(.fileWriteUnknown) }
-            try FileManager.default.createDirectory(at: AppFiles.posterDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: poster.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: poster, options: .atomic)
             return true
         } catch {
@@ -90,20 +87,20 @@ extension Library {
     private func pruneStalePosters(current: URL) {
         // Named by posterURL(for:), like the Poster just saved, so a fresh Poster is never pruned.
         let keep = Set(Self.videoSnapshot(of: directory).keys.compactMap {
-            Self.posterURL(for: directory.appendingPathComponent($0))?.lastPathComponent
+            Self.posterURL(for: directory.appendingPathComponent($0), in: posterDirectory)?.lastPathComponent
         })
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: AppFiles.posterDirectory.path)) ?? []
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: posterDirectory.path)) ?? []
         for name in stalePosters(in: names, keeping: keep, current: current.lastPathComponent) {
-            try? FileManager.default.removeItem(at: AppFiles.posterDirectory.appendingPathComponent(name))
+            try? FileManager.default.removeItem(at: posterDirectory.appendingPathComponent(name))
         }
     }
 
     /// Where a video's Poster is kept: its name changes when the file is replaced, so a stale Poster is never shown.
-    private static func posterURL(for video: URL) -> URL? {
+    private static func posterURL(for video: URL, in posterDirectory: URL) -> URL? {
         guard let values = try? video.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
               let size = values.fileSize, let modified = values.contentModificationDate
         else { return nil }
         let file = VideoFile(size: Int64(size), modified: modified)
-        return AppFiles.posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
+        return posterDirectory.appendingPathComponent(posterFileName(forVideoAt: video.path, file: file))
     }
 }

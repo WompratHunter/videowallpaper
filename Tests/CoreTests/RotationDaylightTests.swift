@@ -1,5 +1,6 @@
 @testable import Core
 import Foundation
+import SharedKernel
 
 // MARK: - Rotation tests: Daylight
 // Part of the Rotation suite (run from `runRotationTests`), split out for length. Ranks of the user's four
@@ -7,7 +8,7 @@ import Foundation
 
 /// `dynamic` in the dark, at Daylight 0.
 private func night(
-    _ now: TimeInterval, _ visibility: VisibilityState, _ eligible: [EligibleVideo] = userVideos
+    _ now: TimeInterval, _ visibility: Presence, _ eligible: [EligibleVideo] = userVideos
 ) -> RotationSituation {
     situation(at: now, eligible, visibility, mode: .dynamic, daylight: 0)
 }

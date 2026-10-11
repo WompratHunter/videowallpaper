@@ -1,4 +1,5 @@
 import Foundation
+import SharedKernel
 
 // MARK: - Analysis cache
 // Each video is analysed once. The result is kept in Application Support, keyed by the video's path, size and
@@ -30,7 +31,7 @@ package struct AnalysisCache: Equatable {
         let analysis: Analysis
 
         func matches(_ file: VideoFile) -> Bool {
-            size == file.size && modifiedMilliseconds == file.modifiedMilliseconds
+            Version(size: size, modifiedMilliseconds: modifiedMilliseconds) == file.version
         }
     }
 
@@ -77,23 +78,16 @@ package struct AnalysisCache: Equatable {
 
 // MARK: - Eligible videos
 
-/// A video the Rotation may play: analysed, and not Excluded for flashing.
-package struct EligibleVideo: Equatable {
-    package let name: String
-    package let modified: Date
-    package let meanLuminance: Double
-}
-
-/// The settled videos (name to modification date) whose Analysis is known and whose flash verdict allows playing,
-/// sorted by name. A video not yet analysed is not eligible: it has not been screened.
+/// The settled videos (name to file) whose Analysis is known and whose flash verdict allows playing, sorted by name.
+/// A video not yet analysed is not eligible: it has not been screened.
 package func screenEligible(
-    settled: [String: Date], analyses: [String: Analysis], overrides: [String]
+    settled: [String: VideoFile], analyses: [String: Analysis], overrides: [String]
 ) -> [EligibleVideo] {
-    settled.compactMap { name, modified -> EligibleVideo? in
+    settled.compactMap { name, file -> EligibleVideo? in
         guard let analysis = analyses[name],
               flashVerdict(flashesPerSecond: analysis.flashesPerSecond, fileName: name, overrides: overrides).isPlayable
         else { return nil }
-        return EligibleVideo(name: name, modified: modified, meanLuminance: analysis.meanLuminance)
+        return EligibleVideo(id: VideoID(name), version: file.version, meanLuminance: analysis.meanLuminance)
     }
     .sorted { $0.name < $1.name }
 }
