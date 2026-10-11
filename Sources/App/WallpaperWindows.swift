@@ -1,4 +1,5 @@
 import AppKit
+import Core
 
 // MARK: - Wallpaper windows
 // One desktop-level window per screen. Windows only host the shared player's layers; all playback lives in Player.

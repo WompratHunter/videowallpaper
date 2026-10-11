@@ -1,4 +1,5 @@
 import AVFoundation
+import Core
 import QuartzCore
 
 // MARK: - Player layers

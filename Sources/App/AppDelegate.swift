@@ -1,11 +1,12 @@
 import AppKit
+import Core
 
 // MARK: - App delegate
 // Wiring: the only place modules meet. It connects system notifications and the shared tick to Player, Library,
 // WallpaperWindows, Visibility and the Rotation, and carries each module's callbacks to the others; decisions live in
 // the modules.
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+package final class AppDelegate: NSObject, NSApplicationDelegate {
     private let player = Player()
     private let library = Library(directory: AppFiles.wallpaperDirectory, analysisCache: AppFiles.analysisCacheFile)
     private lazy var windows = WallpaperWindows(player: player)
@@ -19,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let daylightLocation = DaylightLocation(cacheFile: AppFiles.locationCacheFile)
     private var tickTimer: Timer?
 
-    func applicationDidFinishLaunching(_ n: Notification) {
+    package func applicationDidFinishLaunching(_ n: Notification) {
         Log.write("launch", "pid=\(ProcessInfo.processInfo.processIdentifier) screens=\(NSScreen.screens.count)")
         connectModules()
         // Recorded before anything can change the desktop picture; screens connected later are recorded before the
@@ -204,16 +205,3 @@ extension AppDelegate {
 
     @objc private func screensChanged() { windows.rebuild() }
 }
-
-// MARK: - Entry point
-
-let app = NSApplication.shared
-// Run by `make uninstall` after the LaunchAgent is unloaded: restore and exit, with no windows or player.
-if CommandLine.arguments.contains("--restore-wallpaper") {
-    exit(DesktopPictures.restoreOriginals())
-}
-if CommandLine.arguments.contains("--check-veil") { Visibility.runVeilProbe() }
-app.setActivationPolicy(.accessory)
-let delegate = AppDelegate()
-app.delegate = delegate
-app.run()

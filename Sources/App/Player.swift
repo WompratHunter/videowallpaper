@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Core
 
 // MARK: - Shared player
 // One decoder feeds every display: each window hosts an AVPlayerLayer bound to the same queue player, above

@@ -1,3 +1,4 @@
+@testable import Core
 import Foundation
 
 // MARK: - Analysis cache tests: lookup, encode/decode, prune, eligibility, Analysis order

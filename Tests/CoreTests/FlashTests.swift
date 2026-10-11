@@ -1,3 +1,4 @@
+@testable import Core
 import Foundation
 
 // MARK: - Flash tests: luminance, flash counting, Poster frame, verdicts

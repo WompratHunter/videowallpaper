@@ -1,4 +1,5 @@
 import AppKit
+import Core
 
 // MARK: - Where the app keeps its files
 // Everything the app writes lives under Application Support; the Wallpaper folder holds only the user's videos.
@@ -39,7 +40,7 @@ enum AppFiles {
 // MARK: - Desktop pictures per screen
 // NSWorkspace reads and sets the picture of the current Space only; other Spaces keep whatever they had.
 
-enum DesktopPictures {
+package enum DesktopPictures {
     /// The current picture of every connected screen, keyed by a stable screen identifier.
     private static func current() -> [String: DesktopPicture] {
         var pictures: [String: DesktopPicture] = [:]
@@ -88,7 +89,7 @@ enum DesktopPictures {
 
     /// The `--restore-wallpaper` command: puts back the original picture on every screen showing our Poster.
     /// Returns the process exit status.
-    static func restoreOriginals() -> Int32 {
+    package static func restoreOriginals() -> Int32 {
         let originals = loadOriginals()
         let fallback = DesktopPicture(path: AppFiles.defaultDesktopPicture.path, options: DesktopPictureOptions())
         let plan = restorePlan(

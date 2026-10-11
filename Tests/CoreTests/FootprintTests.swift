@@ -1,3 +1,4 @@
+@testable import Core
 import Foundation
 
 // MARK: - Footprint tests: original desktop pictures, restore

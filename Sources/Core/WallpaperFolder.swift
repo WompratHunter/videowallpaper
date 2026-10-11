@@ -4,12 +4,12 @@ import Foundation
 // Only the user's videos count as a folder change. Finder's .DS_Store (and an older version's hidden Poster) also
 // land in the folder; treating those as changes would reset the Recovery backoff and end a rest on the Poster.
 
-func isWallpaperVideo(named name: String) -> Bool {
+package func isWallpaperVideo(named name: String) -> Bool {
     !name.hasPrefix(".") && ["mp4", "mov", "m4v"].contains((name as NSString).pathExtension.lowercased())
 }
 
 /// The videos among a folder's entries (name to modification date); events that leave it unchanged are ignored.
-func videoListing<Entry>(of entries: [String: Entry]) -> [String: Entry] {
+package func videoListing<Entry>(of entries: [String: Entry]) -> [String: Entry] {
     entries.filter { isWallpaperVideo(named: $0.key) }
 }
 
@@ -18,31 +18,36 @@ func videoListing<Entry>(of entries: [String: Entry]) -> [String: Entry] {
 // A file is ready once its size is unchanged across two checks about 3 s apart. The directory watch only fires
 // when entries change, not while a file grows, so the settler keeps re-checking until nothing is in flux.
 
-struct VideoFile: Equatable {
-    let size: Int64
-    let modified: Date
+package struct VideoFile: Equatable {
+    package let size: Int64
+    package let modified: Date
+
+    package init(size: Int64, modified: Date) {
+        self.size = size
+        self.modified = modified
+    }
 
     /// Whole milliseconds, so a date read back from disk or JSON compares equal to the original.
-    var modifiedMilliseconds: Int64 { Int64((modified.timeIntervalSince1970 * 1000).rounded()) }
+    package var modifiedMilliseconds: Int64 { Int64((modified.timeIntervalSince1970 * 1000).rounded()) }
 }
 
 /// Videos whose non-zero size is the same in both snapshots, with their latest modification date.
-func settledVideos(earlier: [String: VideoFile], later: [String: VideoFile]) -> [String: Date] {
+package func settledVideos(earlier: [String: VideoFile], later: [String: VideoFile]) -> [String: Date] {
     later.filter { name, file in file.size > 0 && earlier[name]?.size == file.size }.mapValues(\.modified)
 }
 
-struct SettleOutcome: Equatable {
+package struct SettleOutcome: Equatable {
     /// The settled set changed: the player must re-decide what to show.
-    let isReadyChanged: Bool
+    package let isReadyChanged: Bool
     /// Some file is still in flux: schedule another check after `checkInterval`.
-    let needsAnotherCheck: Bool
+    package let needsAnotherCheck: Bool
 }
 
-struct FolderSettler {
-    static let checkInterval: TimeInterval = 3
+package struct FolderSettler {
+    package static let checkInterval: TimeInterval = 3
 
     /// The settled videos: the only ones the player may load.
-    private(set) var ready: [String: Date]
+    package private(set) var ready: [String: Date]
     /// The snapshot the next scheduled check compares against; nil when no check is pending.
     private var baseline: [String: VideoFile]?
 
@@ -50,21 +55,21 @@ struct FolderSettler {
     /// video untouched for `checkInterval` is settled and plays at once, while one written more recently waits for
     /// the first check. The launch snapshot is that check's baseline, so a copy that kept the source's date and
     /// is still growing is dropped then too.
-    init(launch snapshot: [String: VideoFile], now: Date) {
+    package init(launch snapshot: [String: VideoFile], now: Date) {
         let cutoff = now.addingTimeInterval(-Self.checkInterval)
         ready = snapshot.filter { _, file in file.size > 0 && file.modified <= cutoff }.mapValues(\.modified)
         baseline = snapshot
     }
 
     /// A folder event. Returns true when the caller should schedule `check` after `checkInterval`.
-    mutating func noteEvent(_ snapshot: [String: VideoFile]) -> Bool {
+    package mutating func noteEvent(_ snapshot: [String: VideoFile]) -> Bool {
         guard baseline == nil else { return false }
         baseline = snapshot
         return true
     }
 
     /// The scheduled check: updates `ready` and says whether the player must hear about it.
-    mutating func check(_ snapshot: [String: VideoFile]) -> SettleOutcome {
+    package mutating func check(_ snapshot: [String: VideoFile]) -> SettleOutcome {
         let earlier = baseline ?? [:]
         let before = ready
         ready = settledVideos(earlier: earlier, later: snapshot)
@@ -80,7 +85,7 @@ struct FolderSettler {
 
 // MARK: - Folder change decision
 
-enum FolderChangeAction: Equatable {
+package enum FolderChangeAction: Equatable {
     case keepPlaying
     case switchTo(URL)
     /// Show the Poster and rebuild at once, replacing any backoff timer. The settle check already debounced
@@ -93,7 +98,7 @@ enum FolderChangeAction: Equatable {
 
 /// What to do when the folder's set of settled videos changes. `isRecovering` covers a pending rebuild and any rest on
 /// the Poster; a video becoming available then rebuilds promptly instead of waiting out the backoff.
-func folderChangeAction(
+package func folderChangeAction(
     toPlay: URL?, current: URL?, currentExists: Bool, isRecovering: Bool, isPowerSaving: Bool
 ) -> FolderChangeAction {
     if isPowerSaving { return .holdForPower }

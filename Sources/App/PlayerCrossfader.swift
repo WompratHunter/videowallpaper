@@ -1,4 +1,5 @@
 import AVFoundation
+import Core
 
 // MARK: - Crossfade
 // The second player of a crossfade: it loads the incoming video beside the Player's one, fades its layers in once

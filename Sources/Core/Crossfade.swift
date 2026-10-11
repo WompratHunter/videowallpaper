@@ -7,7 +7,7 @@ import Foundation
 // actions and is never left with an orphaned second player. A failed incoming video never costs the healthy
 // outgoing one, so a switch can't drop the Live wallpaper to the Poster.
 
-enum CrossfadeAction: Equatable {
+package enum CrossfadeAction: Equatable {
     /// Replace both players with the target at once (and drop any incoming player).
     case cut(URL)
     /// Build the incoming player for the target, hidden above the outgoing one.
@@ -22,11 +22,11 @@ enum CrossfadeAction: Equatable {
     case abandon(URL)
 }
 
-struct Crossfade {
+package struct Crossfade {
     /// Every switch outside the slow Visible-only fallback (which Rotation asks for with its own duration).
-    static let quickDuration: TimeInterval = 5
+    package static let quickDuration: TimeInterval = 5
     /// How long the incoming video may take to become ready for display, and how long a fade may overrun.
-    static let readyTimeout: TimeInterval = 15
+    package static let readyTimeout: TimeInterval = 15
 
     private struct Fade {
         let id: Int
@@ -41,8 +41,10 @@ struct Crossfade {
     private var queued: (target: URL, duration: TimeInterval)?
     private var nextID = 0
 
+    package init() {}
+
     /// Switch to `target` over `duration` seconds; zero, or a player nobody can see, means a cut.
-    mutating func request(
+    package mutating func request(
         _ target: URL, duration: TimeInterval, current: URL?, isPlaying: Bool, now: TimeInterval
     ) -> [CrossfadeAction] {
         guard duration > 0, isPlaying else {
@@ -62,25 +64,25 @@ struct Crossfade {
         return target == current ? [.dropIncoming] : [.dropIncoming, load(target, duration: duration, now: now)]
     }
 
-    mutating func incomingReady(id: Int, now: TimeInterval) -> [CrossfadeAction] {
+    package mutating func incomingReady(id: Int, now: TimeInterval) -> [CrossfadeAction] {
         guard let running = fade, running.id == id, !running.isFading else { return [] }
         fade = Fade(id: id, target: running.target, duration: running.duration, since: now, isFading: true)
         return [.animate(id: id, duration: running.duration)]
     }
 
-    mutating func animationFinished(id: Int) -> [CrossfadeAction] {
+    package mutating func animationFinished(id: Int) -> [CrossfadeAction] {
         guard let running = fade, running.id == id, running.isFading else { return [] }
         return finish(running, now: running.since + running.duration)
     }
 
-    mutating func incomingFailed(id: Int) -> [CrossfadeAction] {
+    package mutating func incomingFailed(id: Int) -> [CrossfadeAction] {
         guard let running = fade, running.id == id else { return [] }
         end()
         return [.abandon(running.target)]
     }
 
     /// The player was paused (occluded or screens asleep): nobody sees the fade, so it completes now.
-    mutating func pause() -> [CrossfadeAction] {
+    package mutating func pause() -> [CrossfadeAction] {
         guard let running = fade else { return [] }
         let next = queued
         end()
@@ -89,14 +91,14 @@ struct Crossfade {
     }
 
     /// Both players are being torn down (Recovery, Low Power Mode, a cut): forget the fade and any queued target.
-    mutating func interrupt() -> [CrossfadeAction] {
+    package mutating func interrupt() -> [CrossfadeAction] {
         guard fade != nil else { return [] }
         end()
         return [.dropIncoming]
     }
 
     /// On the shared tick: a video never ready for display is abandoned, and an overdue fade is completed.
-    mutating func tick(now: TimeInterval) -> [CrossfadeAction] {
+    package mutating func tick(now: TimeInterval) -> [CrossfadeAction] {
         guard let running = fade else { return [] }
         if !running.isFading {
             guard now - running.since >= Self.readyTimeout else { return [] }
