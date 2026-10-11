@@ -5,7 +5,7 @@ import Desktop
 
 extension Composition {
     /// Also used on its own by `--restore-wallpaper`.
-    nonisolated static func desktop() -> DesktopService {
+    static func desktop() -> DesktopService {
         DesktopService(
             pictures: WorkspaceDesktopPictures(),
             originals: FileOriginalsStore(file: AppFiles.originalsFile),

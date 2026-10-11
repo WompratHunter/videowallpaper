@@ -4,6 +4,7 @@ import Foundation
 // The Desktop context's commands: record the user's own desktop pictures, set the Poster as the desktop picture, and
 // restore the originals (`--restore-wallpaper`). What it does is published as `DesktopEvent`s through `onEvent`.
 
+@MainActor
 public final class DesktopService {
     /// Set by whoever runs Desktop: the coordinator, or the log sink for `--restore-wallpaper`.
     public var onEvent: (DesktopEvent) -> Void = { _ in }

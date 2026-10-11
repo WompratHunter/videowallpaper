@@ -5,10 +5,11 @@ import Foundation
 // The real Desktop service on in-memory fakes of its ports: a desktop picture per screen and the originals record.
 // Tests connect screens, change their pictures as the user would, and read back every picture set.
 
+@MainActor
 package final class FakeDesktop {
-    package static let posterDirectory = "/fake/posters"
-    package static let legacyPoster = "/fake/LiveWallpaper/.poster.jpg"
-    package static let defaultPicture = "/fake/System/DefaultDesktop.heic"
+    nonisolated package static let posterDirectory = "/fake/posters"
+    nonisolated package static let legacyPoster = "/fake/LiveWallpaper/.poster.jpg"
+    nonisolated package static let defaultPicture = "/fake/System/DefaultDesktop.heic"
 
     package let pictures: FakeDesktopPictures
     package let originals = FakeOriginalsStore()
@@ -30,6 +31,7 @@ package final class FakeDesktop {
 }
 
 /// The desktop picture per screen, in memory.
+@MainActor
 package final class FakeDesktopPictures: DesktopPicturePort {
     package struct Refused: LocalizedError {
         package var errorDescription: String? { "refused" }

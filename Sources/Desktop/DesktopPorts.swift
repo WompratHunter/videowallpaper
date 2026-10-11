@@ -5,7 +5,8 @@ import Foundation
 // and somewhere to keep the record of the user's own pictures (`FileOriginalsStore`, a file in Application Support).
 // Tests use in-memory fakes of both.
 
-/// The system desktop picture, per screen.
+/// The system desktop picture, per screen. On the main actor, like `NSWorkspace` and `NSScreen`.
+@MainActor
 public protocol DesktopPicturePort: AnyObject {
     /// Every connected screen's stable identifier, in the system's order.
     var screens: [String] { get }
