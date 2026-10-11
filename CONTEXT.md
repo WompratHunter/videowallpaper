@@ -75,6 +75,10 @@ The Live wallpaper is on: windows show the Current video or its Poster, and the 
 The Live wallpaper is off and the user's own desktop picture is back on every screen; quitting the app disables it.
 _Avoid_: paused (that is a Playback state while Enabled), stopped
 
+**Launch at login**:
+Whether the app starts when the user logs in; changing it takes effect at the next login and never starts or stops the running app.
+_Avoid_: login item, autostart
+
 **Lock screen**:
 The macOS screen shown on wake before unlocking; it displays the Poster, not the Live wallpaper.
 
