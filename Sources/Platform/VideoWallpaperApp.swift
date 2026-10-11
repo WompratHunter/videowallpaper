@@ -17,7 +17,7 @@ public enum VideoWallpaperApp {
         if CommandLine.arguments.contains("--restore-wallpaper") {
             exit(Composition.restoreWallpaper())
         }
-        if CommandLine.arguments.contains("--check-veil") { Visibility.runVeilProbe() }
+        if CommandLine.arguments.contains("--check-veil") { Composition.runVeilProbe() }
         app.setActivationPolicy(.accessory)
         let delegate = AppDelegate()
         app.delegate = delegate

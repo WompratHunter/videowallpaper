@@ -22,7 +22,7 @@ let contextTestTargets: [Target] = [
     .testTarget(name: "LibraryTests", dependencies: ["Library", "SharedKernel"]),
     .testTarget(name: "RotationTests", dependencies: ["Rotation", "SharedKernel"]),
     .testTarget(name: "PlaybackTests", dependencies: ["Playback", "SharedKernel"]),
-    .testTarget(name: "PresenceTests", dependencies: ["Presence", "SharedKernel"]),
+    .testTarget(name: "PresenceTests", dependencies: ["Presence", "SharedKernel", "TestSupport"]),
     .testTarget(name: "DaylightTests", dependencies: ["Daylight", "SharedKernel", "TestSupport"]),
     .testTarget(name: "DesktopTests", dependencies: ["Desktop", "SharedKernel"])
 ]

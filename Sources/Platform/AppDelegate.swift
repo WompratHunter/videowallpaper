@@ -4,8 +4,8 @@ import Core
 
 // MARK: - App delegate
 // The entry point: it composes the adapters, owns the shared tick's clock, observes system notifications and forwards
-// each to the coordinator, where the contexts meet. No routing lives here. Workspace and distributed notifications
-// arrive on the main thread; the two that don't are hopped there.
+// each to the coordinator, where the contexts meet. No routing lives here. Workspace notifications arrive on the main
+// thread; the two that don't are hopped there. Lock and unlock are Presence's, behind its lock signal port.
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -42,14 +42,6 @@ extension AppDelegate {
         workspace.addObserver(
             self, selector: #selector(sessionInactive),
             name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
-        // Unlock has no public NSWorkspace notification; this distributed one is what the system posts.
-        DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(screenUnlocked),
-            name: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil)
-        // Lock is expected to occlude every window too; this keeps Unseen correct if it doesn't.
-        DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(screenLocked),
-            name: NSNotification.Name("com.apple.screenIsLocked"), object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -89,10 +81,6 @@ extension AppDelegate {
     @objc private func sessionActive() { coordinator?.sessionDidBecomeActive() }
 
     @objc private func sessionInactive() { coordinator?.sessionDidResignActive() }
-
-    @objc private func screenLocked() { coordinator?.screenLocked() }
-
-    @objc private func screenUnlocked() { coordinator?.screenUnlocked() }
 
     @objc private func screensChanged() { coordinator?.screenParametersChanged() }
 }

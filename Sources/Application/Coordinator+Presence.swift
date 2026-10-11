@@ -1,4 +1,4 @@
-import Core // Legacy: VisibilityEvent, until ticket 03 moves it into Presence
+import Presence
 import Rotation
 import SharedKernel
 
@@ -9,10 +9,19 @@ import SharedKernel
 
 extension Coordinator {
     func connectPresence() {
-        presence.onChange = { [weak self] _ in self?.evaluateRotation(cause: "visibility") }
+        presence.onEvent = { [weak self] event in self?.handle(event) }
+        presence.observeLock { [weak self] isLocked in
+            if isLocked { self?.screenLocked() } else { self?.screenUnlocked() }
+        }
     }
 
-    func notePresenceInput(_ input: VisibilityEvent, cause: String) {
+    private func handle(_ event: PresenceEvent) {
+        emit(.presence(event))
+        guard case .changed = event else { return }
+        evaluateRotation(cause: "visibility")
+    }
+
+    func notePresenceInput(_ input: PresenceInput, cause: String) {
         if let away = input.awayFromDesk { rotationAwayFromDesk(away) }
         presence.apply(input, cause: cause)
     }
@@ -27,18 +36,18 @@ extension Coordinator {
 
     // MARK: - System inputs
 
-    package func screenLocked() {
+    private func screenLocked() {
         notePresenceInput(.locked(true), cause: "lock")
     }
 
-    package func screenUnlocked() {
+    private func screenUnlocked() {
         notePresenceInput(.locked(false), cause: "unlock")
         playbackResetBackoff(on: .unlock)
         playbackVerify(cause: "unlock")
     }
 }
 
-extension VisibilityEvent {
+extension PresenceInput {
     /// What the Rotation hears of this input: occlusion is still time at the desk, so it hears nothing of it.
     fileprivate var awayFromDesk: AwayFromDesk? {
         switch self {
