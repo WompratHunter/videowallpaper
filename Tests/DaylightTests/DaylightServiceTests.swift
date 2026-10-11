@@ -100,6 +100,18 @@ struct DaylightServiceTests {
         #expect(service.slice == DaylightSlice(level: 0, source: .appearance))
     }
 
+    /// A debug build's `VIDEOWALLPAPER_LOCATION` replaces every source but is never logged, as before, so its
+    /// precise coordinates reach no event.
+    @Test func aDebugLocationIsUsedButNeverReported() {
+        let debug = DaylightService(
+            location: fakes.location, places: fakes.places, cache: fakes.cache, appearance: fakes.appearance,
+            now: { Self.noon }, debugLocation: Coordinates(latitude: 42.361_45, longitude: -71.057_08))
+        debug.onEvent = { [recorder] event in recorder.events.append(event) }
+        #expect(debug.current().basis == .sun(.fix))
+        #expect(events.isEmpty)
+        #expect(debug.slice.source == .sun(.fix))
+    }
+
     @Test func theSliceHoldsTheLastReadingAndNoCoordinates() {
         #expect(service.slice == DaylightSlice())
         let reading = service.current()
