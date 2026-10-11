@@ -1,10 +1,19 @@
+import Daylight
+import Desktop
 import Foundation
+import Library
+import Playback
+import Presence
+import Rotation
+import SharedKernel
 
 // MARK: - Coordinator
 // The only place contexts meet (ADR 0002): it hears each context's events and the system's inputs, and calls other
 // contexts' commands, with the order written out. Each context's routes live in `Coordinator+<Context>.swift`: what
 // that context hears, and the commands the other routes issue to it, so a context's ticket edits its own file. This
-// file holds what runs every context in order (launch and the tick), the event stream and the snapshot.
+// file holds what runs every context in order (launch and the tick), the event stream and the snapshot. It imports
+// every context already, so a context's service can move into its target under the same name (`<Context>Service`)
+// without an edit here.
 
 @MainActor
 public final class Coordinator {

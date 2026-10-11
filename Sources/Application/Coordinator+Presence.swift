@@ -1,4 +1,4 @@
-import Core
+import Core // Legacy: VisibilityEvent, until ticket 03 moves it into Presence
 import Rotation
 import SharedKernel
 

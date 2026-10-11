@@ -34,7 +34,7 @@ extension Coordinator {
 
     var libraryVideoNames: Set<String> { library.videoNames }
 
-    func libraryPowerSavingChanged(_ isOn: Bool) {
+    func libraryLowPowerModeChanged(_ isOn: Bool) {
         library.isPowerSaving = isOn
     }
 
