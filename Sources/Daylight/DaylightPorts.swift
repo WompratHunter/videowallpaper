@@ -22,7 +22,8 @@ public enum LocationUpdate: Equatable, Sendable {
     case failed(reason: String)
 }
 
-/// Location Services: authorization and a one-shot fix.
+/// Location Services: authorization and a one-shot fix, on the main actor.
+@MainActor
 public protocol LocationPort: AnyObject {
     var authorization: LocationAuthorization { get }
     /// Updates, on the main thread.
@@ -50,7 +51,8 @@ public protocol LocationCachePort: AnyObject {
     func save(_ fix: LocationCache) throws
 }
 
-/// The system appearance, Daylight's stand-in when there is no place.
+/// The system appearance, Daylight's stand-in when there is no place. Read on the main actor, as AppKit requires.
+@MainActor
 public protocol AppearancePort: AnyObject {
     var current: Appearance { get }
 }
