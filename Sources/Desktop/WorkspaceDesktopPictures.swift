@@ -3,6 +3,7 @@ import AppKit
 // MARK: - Desktop pictures per screen
 // NSWorkspace reads and sets the picture of the current Space only; other Spaces keep whatever they had.
 
+@MainActor
 public final class WorkspaceDesktopPictures: DesktopPicturePort {
     public init() {}
 
