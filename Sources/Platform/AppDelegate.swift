@@ -65,7 +65,6 @@ extension AppDelegate {
     @objc private func timeZoneChanged() {
         DispatchQueue.main.async { [weak self] in
             NSTimeZone.resetSystemTimeZone()
-            Log.write("timezone", "timezone=\(TimeZone.current.identifier)")
             self?.coordinator?.timeZoneChanged()
         }
     }

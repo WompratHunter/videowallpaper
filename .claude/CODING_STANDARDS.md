@@ -42,7 +42,7 @@ Swift-only macOS app, built as a SwiftPM package (`Package.swift`, ADR 0001) tha
   - **WallpaperWindows** (`WallpaperWindows*.swift`): one desktop-level window per screen, hosting the Player's layers, and occlusion
   - **Visibility** (`Visibility*.swift`): Unseen, Veiled or Visible, with a change callback
   - **Rotation** (`Rotation*.swift`): the switch scheduler, reading the inputs the coordinator connects (time, eligible videos, Presence, `Mode`, Daylight) for Core's `RotationState`, returning the switch and publishing `RotationEvent`s
-  - **DaylightLocation** (`DaylightLocation.swift`): where Daylight is computed for (Location Services fix, cache, time zone), the appearance fallback and the debug clock
+  - **Daylight** (`Sources/Daylight/`, a context): `DaylightService` works out where Daylight is computed for (Location Services fix, cache, time zone) and the appearance fallback, behind the location, time-zone-places, location-cache and appearance ports; Platform builds the CoreLocation and AppKit adapters and the debug location and clock
   - **DesktopPictures** (`DesktopPictures.swift`): recording, setting and restoring the system desktop picture
 - A module talks to the outside through its methods and `on…` callback properties (typed `onEvent` once its events exist) that the coordinator sets; it does not hold references to other modules (a module may be given another as a dependency only to host it, as WallpaperWindows hosts the Player's layers)
 - A module may span several files (one type plus extensions, or small internal helper types) when it grows past ~150 lines per type or ~400 per file; name the files after the module (`Player…`, `Library…`)

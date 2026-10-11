@@ -43,7 +43,7 @@ final class AppHarness {
             rotation: rotation,
             playback: PlaybackService(player: player, windows: windows, power: power),
             presence: presence,
-            daylight: daylight,
+            daylight: daylight.service { [clock] in clock.now },
             desktop: desktop.service,
             launchAtLogin: launchAtLogin,
             clock: clock,
