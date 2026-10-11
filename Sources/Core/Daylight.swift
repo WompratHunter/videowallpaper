@@ -64,6 +64,17 @@ func daylightLevel(at date: Date, at place: Coordinates) -> Double {
     daylightLevel(solarElevation: solarElevation(at: date, at: place))
 }
 
+// MARK: - Target brightness
+
+/// Each video's place from darkest (0) to brightest (1), evenly spaced whatever the luminance gaps, so the Target
+/// brightness means the same with any library. Ties go by name so the order is stable; a lone video sits at 0.5.
+func brightnessRanks(_ videos: [EligibleVideo]) -> [String: Double] {
+    let sorted = videos.sorted { ($0.meanLuminance, $0.name) < ($1.meanLuminance, $1.name) }
+    let last = Double(max(sorted.count - 1, 1))
+    let pairs = sorted.enumerated().map { ($1.name, sorted.count == 1 ? 0.5 : Double($0) / last) }
+    return Dictionary(pairs) { first, _ in first }
+}
+
 // MARK: - Location
 
 enum LocationSource: String {

@@ -109,7 +109,7 @@ final class RotationScheduler {
         let deltaL = change.deltaL.map { String(format: "%.3f", $0) } ?? "n/a"
         // Daylight is the Target brightness; the new video's rank shows how close the pick landed.
         let daylight = daylightBasis.map { basis in
-            let rank = brightnessRanks(situation.eligible)[change.to.name] ?? .nan
+            let rank = situation.ranks[change.to.name] ?? .nan
             return String(format: "daylight=%.2f target=%.2f to-rank=%.2f daylight-source=%@ ",
                           situation.daylight, situation.daylight, rank, basis.description)
         } ?? ""

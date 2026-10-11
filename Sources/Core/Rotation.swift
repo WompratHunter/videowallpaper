@@ -76,10 +76,7 @@ func pickNext(
     allowsBigJump: Bool,
     using rng: inout some RandomNumberGenerator
 ) -> (video: EligibleVideo, startsPass: Bool)? {
-    let others = candidates.filter { $0.name != current?.name }
-    var unplayed = others.filter { !played.contains($0.name) }
-    let startsPass = unplayed.isEmpty
-    if startsPass { unplayed = others }
+    let (unplayed, startsPass) = passPool(candidates.filter { $0.name != current?.name }, played: played)
     guard !unplayed.isEmpty else { return nil }
     guard let current else { return unplayed.randomElement(using: &rng).map { ($0, startsPass) } }
     if let pick = unplayed.filter({ isWithinBand($0, current) }).randomElement(using: &rng) {
@@ -92,15 +89,10 @@ func pickNext(
     return nearest.map { ($0, startsPass) }
 }
 
-// MARK: - Target brightness
-
-/// Each video's place from darkest (0) to brightest (1), evenly spaced whatever the luminance gaps, so the Target
-/// brightness means the same with any library. Ties go by name so the order is stable; a lone video sits at 0.5.
-func brightnessRanks(_ videos: [EligibleVideo]) -> [String: Double] {
-    let sorted = videos.sorted { ($0.meanLuminance, $0.name) < ($1.meanLuminance, $1.name) }
-    let last = Double(max(sorted.count - 1, 1))
-    let pairs = sorted.enumerated().map { ($1.name, sorted.count == 1 ? 0.5 : Double($0) / last) }
-    return Dictionary(pairs) { first, _ in first }
+/// The videos among `others` still to play this Pass; once every one has played, a new Pass starts with them all.
+func passPool(_ others: [EligibleVideo], played: Set<String>) -> (unplayed: [EligibleVideo], startsPass: Bool) {
+    let unplayed = others.filter { !played.contains($0.name) }
+    return unplayed.isEmpty ? (others, true) : (unplayed, false)
 }
 
 // MARK: - Dwell
@@ -159,12 +151,31 @@ enum RotationOutcome: Equatable {
 /// Everything a decision reads, gathered by the app at decision time.
 struct RotationSituation {
     var now: TimeInterval
-    var eligible: [EligibleVideo]
+    var eligible: [EligibleVideo] { didSet { ranks = brightnessRanks(eligible) } }
     var visibility: VisibilityState
     var mode: RotationMode
     /// Daylight, used as the Target brightness (a rank) when `followsDaylight`.
     var daylight: Double
-    var isPowerSaving = false
+    var isPowerSaving: Bool
+    /// Each eligible video's brightness rank, worked out once per decision.
+    private(set) var ranks: [String: Double]
+
+    init(
+        now: TimeInterval,
+        eligible: [EligibleVideo],
+        visibility: VisibilityState,
+        mode: RotationMode,
+        daylight: Double,
+        isPowerSaving: Bool = false
+    ) {
+        self.now = now
+        self.eligible = eligible
+        self.visibility = visibility
+        self.mode = mode
+        self.daylight = daylight
+        self.isPowerSaving = isPowerSaving
+        ranks = brightnessRanks(eligible)
+    }
 
     /// The videos the Mode allows right now.
     var candidates: [EligibleVideo] { modeCandidates(eligible, mode: mode) }
@@ -174,7 +185,7 @@ struct RotationSituation {
 
     func isPreferred(_ video: EligibleVideo) -> Bool {
         guard followsDaylight else { return candidates.contains { $0.name == video.name } }
-        guard let rank = brightnessRanks(eligible)[video.name] else { return true }
+        guard let rank = ranks[video.name] else { return true }
         return abs(rank - daylight) <= RotationRules.offTarget + RotationRules.tolerance
     }
 
@@ -289,12 +300,9 @@ struct RotationState {
     private mutating func startRotation(
         _ situation: RotationSituation, using rng: inout some RandomNumberGenerator
     ) -> RotationOutcome {
-        let first = situation.followsDaylight
-            ? pick(from: nil, situation, allowsBigJump: true, using: &rng)?.video
-            : situation.candidates.randomElement(using: &rng)
-        guard let next = nextNewVideo(in: situation) ?? first else {
-            return .stay
-        }
+        guard let next = nextNewVideo(in: situation)
+            ?? pick(from: nil, situation, allowsBigJump: true, using: &rng)?.video
+        else { return .stay }
         return commit(
             (next, startsPass: true), from: nil, reason: .firstVideo, fade: Crossfade.quickDuration,
             situation: situation)
@@ -359,12 +367,12 @@ extension RotationState {
         allowsBigJump: Bool,
         using rng: inout some RandomNumberGenerator
     ) -> (video: EligibleVideo, startsPass: Bool)? {
-        let ranks = brightnessRanks(situation.eligible)
+        let ranks = situation.ranks
         let distance = { (video: EligibleVideo) in abs((ranks[video.name] ?? 0.5) - situation.daylight) }
         var others = situation.eligible.filter { $0.name != current?.name }
-        var unplayed = Set(others.map(\.name)).subtracting(played)
-        let startsPass = unplayed.isEmpty
-        if startsPass { unplayed = Set(others.map(\.name)) }
+        let pool = passPool(others, played: played)
+        let unplayed = Set(pool.unplayed.map(\.name))
+        let startsPass = pool.startsPass
         let window = RotationRules.targetWindow + RotationRules.tolerance
         if let current, !allowsBigJump {
             let fromCurrent = ranks[current.name].map { abs($0 - situation.daylight) } ?? .infinity
