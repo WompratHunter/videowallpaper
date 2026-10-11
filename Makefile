@@ -9,6 +9,9 @@ LABEL     := com.videowallpaper
 VIDEO_DIR := $(HOME)/Movies/LiveWallpaper
 SUPPORT   := $(HOME)/Library/Application Support/VideoWallpaper
 BUNDLE_ID := com.evanscott.videowallpaper
+# A target may only import the targets it declares, so contexts can't reach into each other (ADR 0001); SwiftPM
+# otherwise finds every module of the package on one search path.
+IMPORTS   := --explicit-target-dependency-import-check error
 # A stable signature keeps the Location Services grant across reinstalls; ad-hoc ("-") would change every build.
 # Recursive (=), so only `install` looks the identity up.
 SIGN_ID    = $(or $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $$2; exit}'),-)
@@ -35,22 +38,22 @@ lint:
 
 # Every suite under swift-testing; any failed check fails the run.
 test:
-	swift test
+	swift test $(IMPORTS)
 
 # The real analyser on generated clips with a known flash rate. Pass video paths to measure them instead:
 # `.build/debug/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
 smoke:
-	swift build --product smoke
+	swift build --product smoke $(IMPORTS)
 	"$(DEBUG_DIR)/smoke"
 
 build: lint test smoke
-	swift build -c release --product videowallpaper
+	swift build -c release --product videowallpaper $(IMPORTS)
 	@echo "✓ Built $(RELEASE_DIR)/videowallpaper"
 
 # A separate binary for manual tests, never installed: SwiftPM's debug configuration defines DEBUG, so only it honours
 # VIDEOWALLPAPER_FOLDER and VIDEOWALLPAPER_DWELL_SCALE (see the Rotation ticket's Comments).
 debug:
-	swift build -c debug --product videowallpaper
+	swift build -c debug --product videowallpaper $(IMPORTS)
 	@echo "✓ Built $(DEBUG_DIR)/videowallpaper"
 
 # The agent is unloaded first so the app can't set its Poster again; then the original desktop pictures are
