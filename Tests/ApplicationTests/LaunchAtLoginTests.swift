@@ -4,11 +4,11 @@ import TestSupport
 import Testing
 
 // MARK: - Set Launch at login
-// The command on a fake login item: on, off and the state the snapshot reports, each with its event and log line.
+// The command on a fake launch-at-login port: on, off and the state the snapshot reports, each with its event and log line.
 
 @MainActor
 struct LaunchAtLoginTests {
-    @Test func theSnapshotReportsTheLoginItemsState() {
+    @Test func theSnapshotReportsLaunchAtLoginFromThePort() {
         let app = AppHarness(library: FakeLibrary(eligible: []))
         app.launchAtLogin.isEnabled = false
         app.coordinator.launch()

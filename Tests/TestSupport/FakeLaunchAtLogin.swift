@@ -2,7 +2,7 @@ import Application
 import Foundation
 
 // MARK: - Fake launch at login
-// In-memory login-item state, on by default like today's install. Set `failure` to make the next change fail.
+// In-memory Launch at login state, on by default like today's install. Set `failure` to make the next change fail.
 
 package final class FakeLaunchAtLogin: LaunchAtLoginPort {
     /// Its `reason` is the error's description, so it reads back as the command's failure reason.

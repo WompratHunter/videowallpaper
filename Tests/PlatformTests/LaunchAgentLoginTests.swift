@@ -6,7 +6,7 @@ import Testing
 // The adapter on a temporary folder, never the real ~/Library/LaunchAgents: on writes exactly what `make install`
 // writes, off removes it, and neither needs the other first.
 
-struct LaunchAgentLoginTests {
+final class LaunchAgentLoginTests {
     private static let template = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Sources/Platform/com.videowallpaper.plist.template")
@@ -16,7 +16,7 @@ struct LaunchAgentLoginTests {
     private let plistFile: URL
     private let agent: LaunchAgentLogin
 
-    init() throws {
+    init() {
         folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("LaunchAgentLoginTests-\(UUID().uuidString)", isDirectory: true)
         // The LaunchAgents folder doesn't exist yet: turning on creates it.
@@ -24,12 +24,12 @@ struct LaunchAgentLoginTests {
         agent = LaunchAgentLogin(plistFile: plistFile, home: Self.home)
     }
 
-    private func removeFolder() {
+    /// Each test gets its own instance, so this runs after every test, however it ends.
+    deinit {
         try? FileManager.default.removeItem(at: folder)
     }
 
     @Test func onWritesWhatMakeInstallWrites() throws {
-        defer { removeFolder() }
         #expect(agent.isEnabled == false)
 
         try agent.setEnabled(true)
@@ -44,7 +44,6 @@ struct LaunchAgentLoginTests {
     }
 
     @Test func offRemovesThePlist() throws {
-        defer { removeFolder() }
         try agent.setEnabled(true)
 
         try agent.setEnabled(false)
@@ -54,7 +53,6 @@ struct LaunchAgentLoginTests {
     }
 
     @Test func eachStateCanBeSetTwice() throws {
-        defer { removeFolder() }
         try agent.setEnabled(false)
         #expect(agent.isEnabled == false)
 
@@ -64,7 +62,6 @@ struct LaunchAgentLoginTests {
     }
 
     @Test func anUnwritableFolderThrows() throws {
-        defer { removeFolder() }
         // A file where the LaunchAgents folder should be.
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data().write(to: plistFile.deletingLastPathComponent())
