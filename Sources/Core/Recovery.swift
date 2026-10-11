@@ -4,7 +4,7 @@ import Foundation
 // Decides from plain samples whether the shared player must be rebuilt. Playback time is compared between
 // health ticks because timeControlStatus can report "playing" for a player that has silently died.
 
-enum RecoveryCause: String {
+package enum RecoveryCause: String {
     case failed
     case stuck
     case notPlayingOnWake = "not-playing-on-wake"
@@ -13,7 +13,7 @@ enum RecoveryCause: String {
     case videoAvailable = "video-available"
 }
 
-enum RebuildPlan: Equatable {
+package enum RebuildPlan: Equatable {
     case play(URL, at: Double)
     /// No eligible video in the folder: rest on the Poster. Not a failure, so the backoff does not advance.
     case restNoVideo
@@ -23,31 +23,40 @@ enum RebuildPlan: Equatable {
 
 /// What a rebuild does, given the Rotation's Current video asked for again at rebuild time.
 /// The same video resumes at the saved position; a replacement starts from the beginning.
-func rebuildPlan(toPlay: URL?, current: URL?, saved: Double, isPowerSaving: Bool) -> RebuildPlan {
+package func rebuildPlan(toPlay: URL?, current: URL?, saved: Double, isPowerSaving: Bool) -> RebuildPlan {
     if isPowerSaving { return .holdForPower }
     guard let toPlay else { return .restNoVideo }
     return .play(toPlay, at: toPlay == current ? saved : 0)
 }
 
-struct HealthSample {
+package struct HealthSample {
     /// Monotonic clock reading, in seconds.
-    let now: TimeInterval
-    let playbackSeconds: Double?
+    package let now: TimeInterval
+    package let playbackSeconds: Double?
     /// False while playback is paused on purpose (e.g. screens asleep), when frozen time is expected.
-    let isIntendingToPlay: Bool
-    let hasFailed: Bool
+    package let isIntendingToPlay: Bool
+    package let hasFailed: Bool
+
+    package init(now: TimeInterval, playbackSeconds: Double?, isIntendingToPlay: Bool, hasFailed: Bool) {
+        self.now = now
+        self.playbackSeconds = playbackSeconds
+        self.isIntendingToPlay = isIntendingToPlay
+        self.hasFailed = hasFailed
+    }
 }
 
-struct RecoveryMonitor {
-    static let stuckTicks = 2
-    static let gracePeriod: TimeInterval = 15
+package struct RecoveryMonitor {
+    package static let stuckTicks = 2
+    package static let gracePeriod: TimeInterval = 15
 
     private var hasBaseline = false
     private var lastSeconds: Double?
     private var stalledTicks = 0
     private var graceStart: TimeInterval?
 
-    mutating func tick(_ sample: HealthSample) -> RecoveryCause? {
+    package init() {}
+
+    package mutating func tick(_ sample: HealthSample) -> RecoveryCause? {
         guard sample.isIntendingToPlay else {
             restartBaseline()
             return nil
@@ -63,18 +72,18 @@ struct RecoveryMonitor {
         return stalledTicks >= Self.stuckTicks ? .stuck : nil
     }
 
-    mutating func noteRebuild(at now: TimeInterval) {
+    package mutating func noteRebuild(at now: TimeInterval) {
         graceStart = now
         restartBaseline()
     }
 
     /// Resuming after an intentional pause gets the same grace: a healthy player can take seconds to restart.
-    mutating func noteResume(at now: TimeInterval) {
+    package mutating func noteResume(at now: TimeInterval) {
         noteRebuild(at: now)
     }
 
     /// On wake or unlock a healthy player is left alone; only one that is not actually playing is rebuilt.
-    func verdictAfterWake(
+    package func verdictAfterWake(
         at now: TimeInterval, timeAdvanced: Bool?, isIntendingToPlay: Bool, hasFailed: Bool
     ) -> RecoveryCause? {
         guard isIntendingToPlay else { return nil }
@@ -96,22 +105,24 @@ struct RecoveryMonitor {
 
 // MARK: - Recovery backoff
 
-struct RecoveryBackoff {
-    enum ResetEvent: String {
+package struct RecoveryBackoff {
+    package enum ResetEvent: String {
         case wake
         case unlock
         case folderChange = "folder-change"
     }
 
-    static let delays: [TimeInterval] = [10, 60, 300]
+    package static let delays: [TimeInterval] = [10, 60, 300]
 
     private var attempts = 0
 
+    package init() {}
+
     /// True once every scheduled attempt has been used: the Live wallpaper rests on the Poster.
-    var isResting: Bool { attempts > Self.delays.count }
+    package var isResting: Bool { attempts > Self.delays.count }
 
     /// Delay before the next rebuild, or nil when the schedule is exhausted and the Poster should stay.
-    mutating func nextDelay() -> TimeInterval? {
+    package mutating func nextDelay() -> TimeInterval? {
         attempts = min(attempts + 1, Self.delays.count + 1)
         return isResting ? nil : Self.delays[attempts - 1]
     }
@@ -119,7 +130,7 @@ struct RecoveryBackoff {
     /// Returns true when a rest on the Poster should end with a retry now. Not in Low Power Mode: no player is
     /// built there, so a retry would only spend an attempt; leaving Low Power Mode rebuilds anyway.
     @discardableResult
-    mutating func reset(on event: ResetEvent, isPowerSaving: Bool) -> Bool {
+    package mutating func reset(on event: ResetEvent, isPowerSaving: Bool) -> Bool {
         let wasResting = isResting
         attempts = 0
         return wasResting && !isPowerSaving

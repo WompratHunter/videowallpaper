@@ -1,8 +1,10 @@
+import Analyser
 import AVFoundation
+import Core
 
 // MARK: - Analyser smoke test
 // Runs the real analyser end to end on generated 2 s clips with a known flash rate. With file arguments it instead
-// measures those videos (read only), which is how a real video is checked: `.build/smoke video.mp4 …`.
+// measures those videos (read only), which is how a real video is checked: `.build/debug/smoke video.mp4 …`.
 
 @main
 enum AnalyserSmoke {

@@ -1,22 +1,23 @@
 import AVFoundation
+import Core
 
 // MARK: - Analyser
 // Decodes every frame of a video at reduced resolution and feeds it to the Core FlashScreener. AVFoundation only (no
-// AppKit), so the smoke test can compile it on its own.
+// AppKit), in its own target so the smoke runner shares it with the app.
 
-enum LibraryAnalyser {
+package enum LibraryAnalyser {
     /// Small enough to decode cheaply; each of the 12x12 cells is still 16x9 pixels. The decoder scales to it.
     private static let width = 192
     private static let height = 108
 
-    enum Failure: Error {
+    package enum Failure: Error {
         case noVideoTrack
         case unreadable(String)
     }
 
     /// Mean luminance, the worst flash rate and the Poster time. Blocks while it decodes, so call it off the main
     /// thread; a 20 s 4K60 clip takes a few seconds. Throws `CancellationError` soon after its task is cancelled.
-    static func measure(_ video: URL) async throws -> FrameMeasurement {
+    package static func measure(_ video: URL) async throws -> FrameMeasurement {
         let asset = AVURLAsset(url: video)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw Failure.noVideoTrack }
         let reader = try AVAssetReader(asset: asset)
@@ -49,7 +50,7 @@ enum LibraryAnalyser {
     }
 
     /// The frame at the Poster time, full size up to 4K.
-    static func posterImage(of video: URL, at seconds: Double) async throws -> CGImage {
+    package static func posterImage(of video: URL, at seconds: Double) async throws -> CGImage {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: video))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 3840, height: 2160)

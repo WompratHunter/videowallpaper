@@ -1,3 +1,4 @@
+@testable import Core
 import Foundation
 
 // MARK: - Player state report tests

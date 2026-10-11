@@ -1,4 +1,5 @@
 import AVFoundation
+import Core
 
 // MARK: - Player state for logs and health checks
 // Maps AV state to the plain strings of PlayerStateReport, so the Core report stays free of AVFoundation.

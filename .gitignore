@@ -1,11 +1,15 @@
 # compiled output
 *.o
 *.d
-videowallpaper
+# Anchored: the executable target's folder (Sources/VideoWallpaper) must not match on a case-insensitive disk.
+/videowallpaper
+
+# SwiftPM build output and Xcode's package state
+.build/
+.swiftpm/
 
 # macOS
 .DS_Store
 
-# local test build / agent worktrees
-.build/
+# agent worktrees
 .claude/worktrees/

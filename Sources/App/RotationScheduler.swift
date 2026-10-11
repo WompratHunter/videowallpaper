@@ -1,4 +1,5 @@
 import AppKit
+import Core
 
 // MARK: - Rotation scheduler
 // Gathers what a Rotation decision reads (the clock, eligible videos, Visibility, the `Mode` setting and Daylight)

@@ -1,3 +1,4 @@
+@testable import Core
 import Foundation
 
 // MARK: - Poster file tests: names and pruning

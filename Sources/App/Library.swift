@@ -1,4 +1,6 @@
+import Analyser
 import AppKit
+import Core
 
 // MARK: - Library
 // The Wallpaper folder's videos: watched for changes, settled, analysed and screened for flashing before use, and

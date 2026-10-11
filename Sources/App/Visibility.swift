@@ -1,4 +1,5 @@
 import AppKit
+import Core
 
 // MARK: - Visibility
 // Whether the Live wallpaper can be seen: Unseen, Veiled or Visible (see CONTEXT.md). Unseen follows notifications
@@ -6,7 +7,7 @@ import AppKit
 // while a switch is due), so an idle desktop never pays for it. Only window bounds, layer and alpha are read, which
 // needs no Screen Recording permission.
 
-final class Visibility {
+package final class Visibility {
     /// Called on the main queue whenever `state` changes.
     var onChange: (VisibilityState) -> Void = { _ in }
 
@@ -98,7 +99,7 @@ final class Visibility {
 extension Visibility {
     /// `--check-veil`: samples coverage every 5 s for 45 s and logs each sample, so Veiled can be checked by hand
     /// before anything in the app asks for it. Runs in its own process, never touching the running app.
-    static func runVeilProbe() -> Never {
+    package static func runVeilProbe() -> Never {
         let probe = Visibility()
         var remaining = 9
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in

@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Core
 
 // MARK: - Posters for the window underlay, Mission Control and the Lock screen
 // Kept in Application Support, one per video (see PosterFiles.swift), never in the Wallpaper folder.

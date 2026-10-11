@@ -1,10 +1,8 @@
 APP       := $(HOME)/Applications/VideoWallpaper.app
 BINARY    := $(APP)/Contents/MacOS/videowallpaper
-BUILD_DIR := .build
-APP_SRC   := $(wildcard Sources/App/*.swift)
-CORE_SRC  := $(wildcard Sources/Core/*.swift)
-TEST_SRC  := $(wildcard Tests/*.swift)
-SMOKE_SRC := Sources/App/LibraryAnalyser.swift $(wildcard Tests/Smoke/*.swift)
+# SwiftPM's output folders (Package.swift); recursive (=), so SwiftPM is only asked by the targets that use them.
+RELEASE_DIR = $(shell swift build -c release --show-bin-path)
+DEBUG_DIR   = $(shell swift build -c debug --show-bin-path)
 PLIST_SRC := com.videowallpaper.plist.template
 PLIST_DST := $(HOME)/Library/LaunchAgents/com.videowallpaper.plist
 LABEL     := com.videowallpaper
@@ -21,7 +19,7 @@ SIGN_ID    = $(or $(shell security find-identity -v -p codesigning 2>/dev/null |
 install: build
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(VIDEO_DIR) $(HOME)/Library/Logs
 	@cp Info.plist $(APP)/Contents/Info.plist
-	@install -m 755 $(BUILD_DIR)/videowallpaper $(BINARY)
+	@install -m 755 "$(RELEASE_DIR)/videowallpaper" $(BINARY)
 	@# The first signing asks for keychain access: choose Always Allow. If the key is refused, sign ad-hoc so the
 	@# install still completes (Location Services may then ask again after a later reinstall).
 	@codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "$(APP)" \
@@ -35,29 +33,25 @@ install: build
 lint:
 	swiftlint lint --strict --quiet
 
+# Every suite under swift-testing; any failed check fails the run.
 test:
-	@mkdir -p $(BUILD_DIR)
-	swiftc $(CORE_SRC) $(TEST_SRC) -o $(BUILD_DIR)/tests
-	$(BUILD_DIR)/tests
+	swift test
 
 # The real analyser on generated clips with a known flash rate. Pass video paths to measure them instead:
-# `.build/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
+# `.build/debug/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
 smoke:
-	@mkdir -p $(BUILD_DIR)
-	swiftc -parse-as-library -framework AVFoundation $(CORE_SRC) $(SMOKE_SRC) -o "$(BUILD_DIR)/smoke"
-	"$(BUILD_DIR)/smoke"
+	swift build --product smoke
+	"$(DEBUG_DIR)/smoke"
 
 build: lint test smoke
-	@mkdir -p $(BUILD_DIR)
-	swiftc -O -framework AppKit -framework AVFoundation -framework CoreLocation $(CORE_SRC) $(APP_SRC) -o $(BUILD_DIR)/videowallpaper
-	@echo "✓ Built $(BUILD_DIR)/videowallpaper"
+	swift build -c release --product videowallpaper
+	@echo "✓ Built $(RELEASE_DIR)/videowallpaper"
 
-# A separate binary for manual tests, never installed: only it honours VIDEOWALLPAPER_FOLDER and
-# VIDEOWALLPAPER_DWELL_SCALE (see the Rotation ticket's Comments).
+# A separate binary for manual tests, never installed: SwiftPM's debug configuration defines DEBUG, so only it honours
+# VIDEOWALLPAPER_FOLDER and VIDEOWALLPAPER_DWELL_SCALE (see the Rotation ticket's Comments).
 debug:
-	@mkdir -p $(BUILD_DIR)
-	swiftc -D DEBUG -framework AppKit -framework AVFoundation -framework CoreLocation $(CORE_SRC) $(APP_SRC) -o "$(BUILD_DIR)/videowallpaper-debug"
-	@echo "✓ Built $(BUILD_DIR)/videowallpaper-debug"
+	swift build -c debug --product videowallpaper
+	@echo "✓ Built $(DEBUG_DIR)/videowallpaper"
 
 # The agent is unloaded first so the app can't set its Poster again; then the original desktop pictures are
 # restored while the Posters they replace still exist. A failed restore is reported but doesn't block removal.
