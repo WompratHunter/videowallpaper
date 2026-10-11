@@ -52,7 +52,7 @@ let package = Package(
                 path: "Tests/TestSupport"),
             .testTarget(
                 name: "ApplicationTests",
-                dependencies: ["Application", "TestSupport", "App", "Core", "SharedKernel"] + contextDependencies),
+                dependencies: ["Application", "TestSupport", "Core", "SharedKernel"] + contextDependencies),
             .testTarget(name: "PlatformTests", dependencies: ["Platform", "Application"]),
             // Legacy targets, emptied context by context.
             .target(name: "Core", dependencies: ["SharedKernel"] + contextDependencies),
