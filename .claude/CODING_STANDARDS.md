@@ -4,7 +4,7 @@ Swift-only macOS app, built as a SwiftPM package (`Package.swift`, ADR 0001) tha
 
 ## Language & Platform
 
-- Swift 5.9+, macOS 14+ target
+- A Swift 6 toolchain (`swift-tools-version: 6.0`) in Swift 5 language mode until the Swift 6 switch, macOS 14+ target
 - Frameworks: AppKit, AVFoundation, CoreLocation, Dispatch
 - No SwiftUI, no third-party dependencies
 
