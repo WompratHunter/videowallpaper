@@ -15,6 +15,7 @@ enum Composition {
             presence: presence(),
             daylight: daylight(),
             desktop: desktop(),
+            launchAtLogin: launchAtLogin(),
             clock: clock,
             settings: UserDefaultsSettings())
     }

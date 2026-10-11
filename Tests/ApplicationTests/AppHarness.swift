@@ -29,6 +29,7 @@ final class AppHarness {
     let presence = FakePresence()
     let daylight = FakeDaylight()
     let desktop = FakeDesktop()
+    let launchAtLogin = FakeLaunchAtLogin()
     let coordinator: Coordinator
     private(set) var events: [AppEvent] = []
     private(set) var snapshots: [AppSnapshot] = []
@@ -44,6 +45,7 @@ final class AppHarness {
             presence: presence,
             daylight: daylight,
             desktop: desktop,
+            launchAtLogin: launchAtLogin,
             clock: clock,
             settings: settings)
         coordinator.subscribe { [weak self] event in self?.events.append(event) }
