@@ -7,7 +7,7 @@ Plays every `.mp4`, `.mov` or `.m4v` in `~/Movies/LiveWallpaper/` in turn, switc
 ## Requirements
 
 - macOS 14+ (Sonoma or later)
-- Xcode Command Line Tools: `xcode-select --install`
+- Full Xcode, or a Swift 6 toolchain: the app is a SwiftPM package (`Package.swift`), and `make` drives `swift build` and `swift test` (swift-testing)
 - SwiftLint (`make build` lints first): `brew install swiftlint`
 
 ## Install
@@ -130,4 +130,4 @@ Why switches wait for Unseen or Veiled moments and stay within a brightness band
 
 ## How it works
 
-A small Swift app opens one borderless `NSWindow` per screen at desktop level (behind icons). One shared `AVQueuePlayer` + `AVPlayerLooper` drives every screen, with `videoGravity = .resizeAspectFill` to fill it and the Poster drawn underneath, so a failed player shows the Poster rather than black. It uses hardware decoding, pauses when the screens sleep or every window is covered, shows only the Poster in Low Power Mode, recovers a failed or stuck player on its own, and rebuilds windows when monitors are connected or removed. To measure videos yourself without installing anything, run `make smoke`, then `.build/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
+A small Swift app opens one borderless `NSWindow` per screen at desktop level (behind icons). One shared `AVQueuePlayer` + `AVPlayerLooper` drives every screen, with `videoGravity = .resizeAspectFill` to fill it and the Poster drawn underneath, so a failed player shows the Poster rather than black. It uses hardware decoding, pauses when the screens sleep or every window is covered, shows only the Poster in Low Power Mode, recovers a failed or stuck player on its own, and rebuilds windows when monitors are connected or removed. To measure videos yourself without installing anything, run `make smoke`, then `.build/debug/smoke ~/Movies/LiveWallpaper/*.mp4` (read only).
