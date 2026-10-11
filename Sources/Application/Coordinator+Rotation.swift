@@ -12,11 +12,12 @@ extension Coordinator {
         inputs.eligibleVideos = { [weak self] in self?.eligibleVideos ?? [] }
         inputs.presence = { [weak self] in self?.currentPresence ?? .visible }
         inputs.checkVeil = { [weak self] in self?.sampleVeil() ?? .visible }
-        inputs.isPowerSaving = { [weak self] in self?.isLowPowerMode ?? false }
+        inputs.isLowPowerMode = { [weak self] in self?.isLowPowerMode ?? false }
         inputs.modeSetting = { [settings] in settings.load().modeSetting }
         inputs.daylight = { [weak self] in self?.daylightForRotation() ?? (0, "none") }
-        rotation.connect(inputs)
+        // Events first: connecting announces a debug build's Dwell scale.
         rotation.onEvent = { [weak self] event in self?.emit(.rotation(event)) }
+        rotation.connect(inputs)
     }
 
     func launchRotation(present: Set<String>) {
@@ -34,14 +35,17 @@ extension Coordinator {
         playbackPlay(next.video, fade: next.fade)
     }
 
-    /// The eligible set changed: returns the fade of the switch it led to, if any.
+    /// The eligible set changed: returns the fade of the switch it led to, if any. The snapshot is republished, since
+    /// a newly queued video changes the Rotation's slice without an event.
     func rotationFolderChanged() -> TimeInterval? {
-        rotation.refresh(cause: "folder-change")?.fade
+        let fade = rotation.refresh(cause: "folder-change")
+        publishSnapshot()
+        return fade
     }
 
     /// A rebuild asks what to play, so a deleted Current video is replaced first.
     func rotationVideoForRebuild() -> URL? {
-        _ = rotation.refresh(cause: "rebuild")
+        rotation.refresh(cause: "rebuild")
         return rotation.video
     }
 

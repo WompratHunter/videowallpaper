@@ -1,21 +1,11 @@
-@testable import Core
 import Foundation
-import Rotation
+@testable import Rotation
 import SharedKernel
+import Testing
 
 // MARK: - Rotation tests
 // The user's four videos and their measured luminance anchor the expectations: lucyna and maomao are 0.016 apart,
 // ff7 (0.037) and capybara (0.299) are more than 0.08 from every other video, so reaching or leaving them needs Unseen.
-
-func runRotationTests() {
-    runModeTests()
-    runPickTests()
-    runDwellTests()
-    runSchedulingTests()
-    runLibraryChangeTests()
-    runDaylightTargetTests()
-    runAllowedTransitionTests()
-}
 
 /// SplitMix64: a deterministic RNG so every pick in these tests is reproducible.
 struct SeededGenerator: RandomNumberGenerator {
@@ -47,14 +37,14 @@ func names(_ videos: [EligibleVideo]) -> [String] { videos.map(\.name).sorted() 
 func situation(
     at now: TimeInterval,
     _ eligible: [EligibleVideo] = userVideos,
-    _ visibility: Presence = .visible,
+    _ presence: Presence = .visible,
     mode: RotationMode = .all,
     daylight: Double = 0,
-    isPowerSaving: Bool = false
+    isLowPowerMode: Bool = false
 ) -> RotationSituation {
     RotationSituation(
-        now: now, eligible: eligible, visibility: visibility, mode: mode, daylight: daylight,
-        isPowerSaving: isPowerSaving)
+        now: now, eligible: eligible, presence: presence, mode: mode, daylight: daylight,
+        isLowPowerMode: isLowPowerMode)
 }
 
 func switched(_ outcome: RotationOutcome) -> RotationSwitch? {
@@ -100,91 +90,94 @@ func tick(
 
 // MARK: - Mode
 
-private func runModeTests() {
-    checkEqual(rotationMode(setting: nil, isAutoAppearance: true), .dynamic)
-    checkEqual(rotationMode(setting: nil, isAutoAppearance: false), .all)
-    checkEqual(rotationMode(setting: "dark", isAutoAppearance: false), .dark)
-    checkEqual(rotationMode(setting: "Light", isAutoAppearance: true), .light)
-    checkEqual(rotationMode(setting: "sepia", isAutoAppearance: true), .dynamic)
+@Test func modeSettingHalvesAndRanks() {
+    #expect(rotationMode(setting: nil, isAutoAppearance: true) == .dynamic)
+    #expect(rotationMode(setting: nil, isAutoAppearance: false) == .all)
+    #expect(rotationMode(setting: "dark", isAutoAppearance: false) == .dark)
+    #expect(rotationMode(setting: "Light", isAutoAppearance: true) == .light)
+    #expect(rotationMode(setting: "sepia", isAutoAppearance: true) == .dynamic)
 
     // The user's median is 0.169: ff7 and lucyna are the darker half, maomao and capybara the brighter.
-    checkEqual(names(modeCandidates(userVideos, mode: .dark)), ["ff7.mp4", "lucyna.mp4"])
-    checkEqual(names(modeCandidates(userVideos, mode: .light)), ["capybara.mp4", "maomao.mp4"])
-    checkEqual(names(modeCandidates(userVideos, mode: .all)), names(userVideos))
+    #expect(names(modeCandidates(userVideos, mode: .dark)) == ["ff7.mp4", "lucyna.mp4"])
+    #expect(names(modeCandidates(userVideos, mode: .light)) == ["capybara.mp4", "maomao.mp4"])
+    #expect(names(modeCandidates(userVideos, mode: .all)) == names(userVideos))
     // dynamic narrows by Daylight at the pick, not by halves.
-    checkEqual(names(modeCandidates(userVideos, mode: .dynamic)), names(userVideos))
+    #expect(names(modeCandidates(userVideos, mode: .dynamic)) == names(userVideos))
     // An odd count puts the median video in both halves.
     let five = userVideos + [video("mid.mp4", 0.17)]
-    checkEqual(names(modeCandidates(five, mode: .dark)), ["ff7.mp4", "lucyna.mp4", "mid.mp4"])
-    checkEqual(names(modeCandidates(five, mode: .light)), ["capybara.mp4", "maomao.mp4", "mid.mp4"])
+    #expect(names(modeCandidates(five, mode: .dark)) == ["ff7.mp4", "lucyna.mp4", "mid.mp4"])
+    #expect(names(modeCandidates(five, mode: .light)) == ["capybara.mp4", "maomao.mp4", "mid.mp4"])
 
     // Brightness rank: darkest 0 to brightest 1, evenly spaced, whatever the luminance gaps.
     let ranks = brightnessRanks(userVideos)
-    checkEqual(ranks["ff7.mp4"], 0)
-    checkEqual(ranks["capybara.mp4"], 1)
-    check(abs((ranks["lucyna.mp4"] ?? 0) - 1.0 / 3) < 1e-9 && abs((ranks["maomao.mp4"] ?? 0) - 2.0 / 3) < 1e-9,
-          "lucyna and maomao are a third and two thirds up")
+    #expect(ranks["ff7.mp4"] == 0)
+    #expect(ranks["capybara.mp4"] == 1)
+    #expect(
+        abs((ranks["lucyna.mp4"] ?? 0) - 1.0 / 3) < 1e-9 && abs((ranks["maomao.mp4"] ?? 0) - 2.0 / 3) < 1e-9,
+        "lucyna and maomao are a third and two thirds up")
 }
 
 // MARK: - Pick
 
-private func runPickTests() {
+@Test func pickStaysInTheBandAndThePass() {
     var rng = SeededGenerator(state: 1)
     // Band: from lucyna, only maomao is within 0.08, whatever the RNG.
     for _ in 0..<50 {
         let pick = pickNext(from: lucyna, candidates: userVideos, played: [], allowsBigJump: false, using: &rng)
-        checkEqual(pick?.video, maomao)
+        #expect(pick?.video == maomao)
     }
     // Exactly 0.08 apart is within the band.
     let edge = video("edge.mp4", 0.161 + 0.08)
-    checkEqual(
-        pickNext(from: lucyna, candidates: [lucyna, edge], played: [], allowsBigJump: false, using: &rng)?.video, edge)
+    let atEdge = pickNext(from: lucyna, candidates: [lucyna, edge], played: [], allowsBigJump: false, using: &rng)
+    #expect(atEdge?.video == edge)
     // Unseen-only big jump: nothing is near capybara or ff7, so no pick unless a big jump is allowed.
-    check(pickNext(from: capybara, candidates: userVideos, played: [], allowsBigJump: false, using: &rng) == nil,
-          "capybara has no video within the band")
-    check(pickNext(from: ff7, candidates: userVideos, played: [], allowsBigJump: false, using: &rng) == nil,
-          "ff7 has no video within the band")
-    checkEqual(
-        pickNext(from: capybara, candidates: userVideos, played: [], allowsBigJump: true, using: &rng)?.video, maomao)
-    checkEqual(pickNext(from: ff7, candidates: userVideos, played: [], allowsBigJump: true, using: &rng)?.video, lucyna)
+    let fromCapybara = pickNext(from: capybara, candidates: userVideos, played: [], allowsBigJump: false, using: &rng)
+    #expect(fromCapybara == nil, "capybara has no video within the band")
+    let fromFF7 = pickNext(from: ff7, candidates: userVideos, played: [], allowsBigJump: false, using: &rng)
+    #expect(fromFF7 == nil, "ff7 has no video within the band")
+    let jumpFromCapybara = pickNext(
+        from: capybara, candidates: userVideos, played: [], allowsBigJump: true, using: &rng)
+    #expect(jumpFromCapybara?.video == maomao)
+    let jumpFromFF7 = pickNext(from: ff7, candidates: userVideos, played: [], allowsBigJump: true, using: &rng)
+    #expect(jumpFromFF7?.video == lucyna)
     // An in-band video is preferred even when a big jump is allowed.
-    checkEqual(
-        pickNext(from: maomao, candidates: userVideos, played: [], allowsBigJump: true, using: &rng)?.video, lucyna)
+    let inBand = pickNext(from: maomao, candidates: userVideos, played: [], allowsBigJump: true, using: &rng)
+    #expect(inBand?.video == lucyna)
     // No repeat within a Pass: maomao played, so from lucyna the nearest unplayed (ff7) when Unseen.
     let afterMaomao = pickNext(
         from: lucyna, candidates: userVideos, played: ["maomao.mp4", "lucyna.mp4"], allowsBigJump: true, using: &rng)
-    checkEqual(afterMaomao?.video, ff7)
-    checkEqual(afterMaomao?.startsPass, false)
+    #expect(afterMaomao?.video == ff7)
+    #expect(afterMaomao?.startsPass == false)
     // Played maomao while Visible: nothing allowed, rather than a repeat.
-    check(pickNext(
-        from: lucyna, candidates: userVideos, played: ["maomao.mp4"], allowsBigJump: false, using: &rng) == nil,
-          "a played video is not repeated within the Pass")
+    let noRepeat = pickNext(
+        from: lucyna, candidates: userVideos, played: ["maomao.mp4"], allowsBigJump: false, using: &rng)
+    #expect(noRepeat == nil, "a played video is not repeated within the Pass")
     // Every other video played: a new Pass starts.
     let allPlayed = Set(names(userVideos))
     let newPass = pickNext(from: lucyna, candidates: userVideos, played: allPlayed, allowsBigJump: false, using: &rng)
-    checkEqual(newPass?.video, maomao)
-    checkEqual(newPass?.startsPass, true)
+    #expect(newPass?.video == maomao)
+    #expect(newPass?.startsPass == true)
     // Only the Current video: nothing to switch to.
-    check(pickNext(from: lucyna, candidates: [lucyna], played: [], allowsBigJump: true, using: &rng) == nil,
-          "a lone video never switches to itself")
+    let lone = pickNext(from: lucyna, candidates: [lucyna], played: [], allowsBigJump: true, using: &rng)
+    #expect(lone == nil, "a lone video never switches to itself")
 }
 
 // MARK: - Dwell
 
-private func runDwellTests() {
+@Test func dwellCountsAwakeUnlockedTime() {
     var dwell = Dwell()
     dwell.advance(to: 0, isCounting: true)
     dwell.advance(to: 5, isCounting: true)
-    checkEqual(dwell.elapsed, 5)
+    #expect(dwell.elapsed == 5)
     // Locked from 5 s to 600 s: none of it counts.
     dwell.advance(to: 5, isCounting: false)
     dwell.advance(to: 600, isCounting: true)
-    checkEqual(dwell.elapsed, 5)
+    #expect(dwell.elapsed == 5)
     // A sleep the app never heard of (a 2 h gap between ticks) counts as one late tick at most.
     dwell.advance(to: 600 + 7200, isCounting: true)
-    checkEqual(dwell.elapsed, 5 + Dwell.maxStep)
+    #expect(dwell.elapsed == 5 + Dwell.maxStep)
     dwell.restart()
-    checkEqual(dwell.elapsed, 0)
+    #expect(dwell.elapsed == 0)
 
     // Through the state: screens asleep and locked pause Dwell. Occlusion (working in an opaque app) isn't an input,
     // so it can't.
@@ -192,72 +185,71 @@ private func runDwellTests() {
     var rng = SeededGenerator(state: 3)
     tick(&state, from: 0, until: 600)
     state.apply(.locked(true), at: 600)
-    checkEqual(state.dwell.elapsed, 600)
+    #expect(state.dwell.elapsed == 600)
     _ = state.decide(situation(at: 620, userVideos, .unseen), using: &rng)
     state.apply(.screensAsleep(true), at: 625)
     state.apply(.locked(false), at: 3000)
     _ = state.decide(situation(at: 3020, userVideos, .unseen), using: &rng)
-    checkEqual(state.dwell.elapsed, 600)
+    #expect(state.dwell.elapsed == 600)
     state.apply(.screensAsleep(false), at: 3020)
     tick(&state, from: 3020, until: 3050)
     _ = state.decide(situation(at: 3050), using: &rng)
-    checkEqual(state.dwell.elapsed, 630)
+    #expect(state.dwell.elapsed == 630)
 }
 
 // MARK: - When to switch
 
-private func runSchedulingTests() {
+@Test func aSwitchWaitsForDwellAndThePresence() {
     var rng = SeededGenerator(state: 5)
     // Launch: the first eligible video plays at once.
     var launch = RotationState(present: Set(names(userVideos)))
     let first = switched(launch.decide(situation(at: 0), using: &rng))
-    checkEqual(first?.reason, .firstVideo)
-    check(first?.from == nil && first?.deltaL == nil, "the first video has no predecessor")
+    #expect(first?.reason == .firstVideo)
+    #expect(first?.from == nil && first?.deltaL == nil, "the first video has no predecessor")
 
     // Under 20 min of Dwell nothing switches, even Unseen.
     var state = playing(lucyna)
     tick(&state, from: 0, until: twentyMinutes - 5)
-    checkEqual(state.decide(situation(at: twentyMinutes - 5, userVideos, .unseen), using: &rng), .stay)
+    #expect(state.decide(situation(at: twentyMinutes - 5, userVideos, .unseen), using: &rng) == .stay)
     // At 20 min, Veiled: a 5 s crossfade to the in-band video.
     tick(&state, from: twentyMinutes - 5, until: twentyMinutes)
     let veiled = switched(state.decide(situation(at: twentyMinutes, userVideos, .veiled), using: &rng))
-    checkEqual(veiled?.to, maomao)
-    checkEqual(veiled?.reason, .dwell)
-    checkEqual(veiled?.fade, 5)
-    check(abs((veiled?.deltaL ?? 1) - 0.016) < 1e-9, "ΔL is the luminance difference")
-    checkEqual(state.dwell.elapsed, 0)
+    #expect(veiled?.to == maomao)
+    #expect(veiled?.reason == .dwell)
+    #expect(veiled?.fade == 5)
+    #expect(abs((veiled?.deltaL ?? 1) - 0.016) < 1e-9, "ΔL is the luminance difference")
+    #expect(state.dwell.elapsed == 0)
 
     // Visible only: nothing at 20 min, a 20 s crossfade at 1 h.
     var visible = playing(lucyna)
     tick(&visible, from: 0, until: twentyMinutes)
-    checkEqual(visible.decide(situation(at: twentyMinutes), using: &rng), .stay)
+    #expect(visible.decide(situation(at: twentyMinutes), using: &rng) == .stay)
     tick(&visible, from: twentyMinutes, until: oneHour)
     let fallback = switched(visible.decide(situation(at: oneHour), using: &rng))
-    checkEqual(fallback?.reason, .visibleFallback)
-    checkEqual(fallback?.fade, 20)
-    checkEqual(fallback?.to, maomao)
-    runBrightnessJumpTests()
+    #expect(fallback?.reason == .visibleFallback)
+    #expect(fallback?.fade == 20)
+    #expect(fallback?.to == maomao)
 }
 
 /// Large brightness jumps, a full Pass and Low Power Mode, on the user's four videos.
-private func runBrightnessJumpTests() {
+@Test func bigBrightnessJumpsWaitForUnseen() {
     var rng = SeededGenerator(state: 6)
     // From capybara nothing is within the band: Veiled waits, Unseen takes the nearest (maomao).
     var bright = playing(capybara)
     tick(&bright, from: 0, until: oneHour)
-    checkEqual(bright.decide(situation(at: oneHour), using: &rng), .waitingForUnseen)
-    checkEqual(bright.decide(situation(at: oneHour, userVideos, .veiled), using: &rng), .waitingForUnseen)
+    #expect(bright.decide(situation(at: oneHour), using: &rng) == .waitingForUnseen)
+    #expect(bright.decide(situation(at: oneHour, userVideos, .veiled), using: &rng) == .waitingForUnseen)
     let jump = switched(bright.decide(situation(at: oneHour, userVideos, .unseen), using: &rng))
-    checkEqual(jump?.to, maomao)
-    checkEqual(jump?.fade, 5)
+    #expect(jump?.to == maomao)
+    #expect(jump?.fade == 5)
 
     // Reaching ff7 needs Unseen: after maomao, lucyna; after both, only ff7 or capybara remain, both far.
     var dark = playing(maomao)
     tick(&dark, from: 0, until: twentyMinutes)
-    checkEqual(switched(dark.decide(situation(at: twentyMinutes, userVideos, .veiled), using: &rng))?.to, lucyna)
+    #expect(switched(dark.decide(situation(at: twentyMinutes, userVideos, .veiled), using: &rng))?.to == lucyna)
     tick(&dark, from: twentyMinutes, until: 2 * twentyMinutes)
-    checkEqual(dark.decide(situation(at: 2 * twentyMinutes, userVideos, .veiled), using: &rng), .waitingForUnseen)
-    checkEqual(switched(dark.decide(situation(at: 2 * twentyMinutes, userVideos, .unseen), using: &rng))?.to, ff7)
+    #expect(dark.decide(situation(at: 2 * twentyMinutes, userVideos, .veiled), using: &rng) == .waitingForUnseen)
+    #expect(switched(dark.decide(situation(at: 2 * twentyMinutes, userVideos, .unseen), using: &rng))?.to == ff7)
 
     // No repeat in a Pass: switching while Unseen visits all four before any repeats.
     var pass = playing(capybara)
@@ -270,84 +262,86 @@ private func runBrightnessJumpTests() {
             seen.append(change.to.name)
         }
     }
-    checkEqual(seen.sorted(), names(userVideos))
+    #expect(seen.sorted() == names(userVideos))
 
     // Low Power Mode: no switch, however long the Dwell.
     var power = playing(lucyna)
     tick(&power, from: 0, until: oneHour)
-    checkEqual(power.decide(situation(at: oneHour, userVideos, .unseen, isPowerSaving: true), using: &rng), .stay)
-
+    #expect(power.decide(situation(at: oneHour, userVideos, .unseen, isLowPowerMode: true), using: &rng) == .stay)
 }
 
 // MARK: - Folder changes
 
-private func runLibraryChangeTests() {
+@Test func aNewVideoPlaysNext() {
     var rng = SeededGenerator(state: 11)
     // A newly added video plays next, at the next allowed switch point, ahead of the random pick.
     var state = playing(lucyna)
     let added = video("new.mp4", 0.2, modified: 100)
     let withNew = userVideos + [added]
-    checkEqual(state.decide(situation(at: 5, withNew, .unseen), using: &rng), .stay)
+    #expect(state.decide(situation(at: 5, withNew, .unseen), using: &rng) == .stay)
     tick(&state, from: 5, until: twentyMinutes, withNew)
     let next = switched(state.decide(situation(at: twentyMinutes, withNew, .veiled), using: &rng))
-    checkEqual(next?.to, added)
-    checkEqual(next?.reason, .newVideo)
+    #expect(next?.to == added)
+    #expect(next?.reason == .newVideo)
     // A new video too far in brightness waits for Unseen rather than letting another video go first.
     var waiting = playing(lucyna)
     let brightNew = video("bright.mp4", 0.6, modified: 100)
     let withBright = userVideos + [brightNew]
     _ = waiting.decide(situation(at: 5, withBright), using: &rng)
     tick(&waiting, from: 5, until: twentyMinutes, withBright)
-    checkEqual(waiting.decide(situation(at: twentyMinutes, withBright, .veiled), using: &rng), .waitingForUnseen)
-    checkEqual(switched(waiting.decide(situation(at: twentyMinutes, withBright, .unseen), using: &rng))?.to, brightNew)
+    #expect(waiting.decide(situation(at: twentyMinutes, withBright, .veiled), using: &rng) == .waitingForUnseen)
+    #expect(switched(waiting.decide(situation(at: twentyMinutes, withBright, .unseen), using: &rng))?.to == brightNew)
     // A video present at launch but analysed later joins the Rotation without jumping the queue: were it new, the
     // far-off late video would hold the switch until Unseen.
     var launch = playing(lucyna, alsoPresent: ["late.mp4"])
     let withLate = userVideos + [video("late.mp4", 0.9)]
     _ = launch.decide(situation(at: 5, withLate), using: &rng)
     tick(&launch, from: 5, until: twentyMinutes, withLate)
-    checkEqual(switched(launch.decide(situation(at: twentyMinutes, withLate, .veiled), using: &rng))?.to, maomao)
+    #expect(switched(launch.decide(situation(at: twentyMinutes, withLate, .veiled), using: &rng))?.to == maomao)
+}
 
+@Test func aRemovedCurrentVideoIsReplacedAtOnce() {
+    var rng = SeededGenerator(state: 11)
     // Removing the Current video switches at once, Visible and with no Dwell, by the nearest-brightness rule.
     var removal = playing(lucyna)
     let removed = switched(removal.decide(situation(at: 5, [capybara, ff7, maomao]), using: &rng))
-    checkEqual(removed?.reason, .currentRemoved)
-    checkEqual(removed?.to, maomao)
-    checkEqual(removed?.from, lucyna)
-    checkEqual(removed?.isDeferred, false)
+    #expect(removed?.reason == .currentRemoved)
+    #expect(removed?.to == maomao)
+    #expect(removed?.from == lucyna)
+    #expect(removed?.isDeferred == false)
     // In Low Power Mode the replacement is still chosen, but deferred: it plays when Low Power Mode ends.
     var lowPower = playing(lucyna)
-    let deferred = switched(lowPower.decide(situation(at: 5, [capybara, maomao], isPowerSaving: true), using: &rng))
-    checkEqual(deferred?.to, maomao)
-    checkEqual(deferred?.isDeferred, true)
-    checkEqual(lowPower.current, maomao)
+    let deferred = switched(
+        lowPower.decide(situation(at: 5, [capybara, maomao], isLowPowerMode: true), using: &rng))
+    #expect(deferred?.to == maomao)
+    #expect(deferred?.isDeferred == true)
+    #expect(lowPower.current == maomao)
     // The last video removed: nothing to play.
     var last = playing(lucyna, among: [lucyna])
-    checkEqual(last.decide(situation(at: 5, []), using: &rng), .stay)
-    check(last.current == nil, "no Current video once the folder is empty")
+    #expect(last.decide(situation(at: 5, []), using: &rng) == .stay)
+    #expect(last.current == nil, "no Current video once the folder is empty")
     // A video added to an empty Rotation plays at once.
-    checkEqual(switched(last.decide(situation(at: 10, [maomao]), using: &rng))?.reason, .firstVideo)
-    runSwitchPointTests()
+    #expect(switched(last.decide(situation(at: 10, [maomao]), using: &rng))?.reason == .firstVideo)
 }
 
 /// Veiled is sampled from the window list only when a switch could follow.
-private func runSwitchPointTests() {
+@Test func veiledIsSampledOnlyNearASwitchPoint() {
     // A lone video has nowhere to go, so a long Dwell doesn't ask for the window list.
     var lone = playing(lucyna, among: [lucyna])
     tick(&lone, from: 0, until: oneHour, [lucyna])
-    check(!lone.isSwitchPointNear(situation(at: oneHour, [lucyna])), "a lone video is never near a switch")
+    #expect(!lone.isSwitchPointNear(situation(at: oneHour, [lucyna])), "a lone video is never near a switch")
     var pair = playing(lucyna, among: [lucyna, maomao])
     tick(&pair, from: 0, until: twentyMinutes + 10, [lucyna, maomao])
-    check(pair.isSwitchPointNear(situation(at: twentyMinutes, [lucyna, maomao])), "Dwell met with somewhere to go")
+    #expect(pair.isSwitchPointNear(situation(at: twentyMinutes, [lucyna, maomao])), "Dwell met with somewhere to go")
 }
 
-private func runAllowedTransitionTests() {
+@Test func eachPresenceAllowsItsOwnTransition() {
     let quick = AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: false)
     let quickWithJump = AllowedTransition(crossfade: 5, minimumDwell: 20 * 60, allowsBrightnessJump: true)
     let fallback = AllowedTransition(crossfade: 20, minimumDwell: 60 * 60, allowsBrightnessJump: false)
     // A big brightness jump only when nobody watches; Veiled is still seen through the glass.
-    checkEqual(allowedTransition(for: .unseen), quickWithJump)
-    checkEqual(allowedTransition(for: .veiled), quick)
+    #expect(allowedTransition(for: .unseen) == quickWithJump)
+    #expect(allowedTransition(for: .veiled) == quick)
     // Visible only via the slow fallback after an hour.
-    checkEqual(allowedTransition(for: .visible), fallback)
+    #expect(allowedTransition(for: .visible) == fallback)
 }
