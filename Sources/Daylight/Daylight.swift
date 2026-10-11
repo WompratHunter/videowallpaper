@@ -3,13 +3,14 @@ import Foundation
 // MARK: - Daylight
 // How bright it is outdoors where the Mac is, from the sun's position alone: computed here from coordinates and the
 // time, with no network. The Rotation aims its pick at this (the Target brightness) in `dynamic` Mode, through the
-// coordinator, which hands it only the level and its source.
+// coordinator, which hands it only the level and its source. Pure: `DaylightService` gathers the inputs.
 
-package struct Coordinates: Equatable, Codable {
-    package let latitude: Double
-    package let longitude: Double
+/// A place on Earth in degrees. Public only because the location and time-zone-places ports carry it.
+public struct Coordinates: Equatable, Codable, Sendable {
+    public let latitude: Double
+    public let longitude: Double
 
-    package init(latitude: Double, longitude: Double) {
+    public init(latitude: Double, longitude: Double) {
         self.latitude = latitude
         self.longitude = longitude
     }
@@ -19,7 +20,7 @@ package struct Coordinates: Equatable, Codable {
 
 /// The sun's elevation above the horizon in degrees, without refraction (NOAA's solar position algorithm, good to
 /// about a minute of sunrise time between 1900 and 2100).
-package func solarElevation(at date: Date, at place: Coordinates) -> Double {
+func solarElevation(at date: Date, at place: Coordinates) -> Double {
     let julianDay = date.timeIntervalSince1970 / 86400 + 2_440_587.5
     let jc = (julianDay - 2_451_545) / 36525  // Julian centuries since J2000
     let meanLongitude = (280.46646 + jc * (36000.76983 + jc * 0.0003032)).truncatingRemainder(dividingBy: 360)
@@ -51,36 +52,36 @@ package func solarElevation(at date: Date, at place: Coordinates) -> Double {
 
 // MARK: - Daylight curve
 
-package enum DaylightRules {
+enum DaylightRules {
     /// Civil twilight ends: below this it is night.
-    package static let nightElevation = -6.0
+    static let nightElevation = -6.0
     /// From here up it is full day, so a low winter noon sun still counts.
-    package static let dayElevation = 25.0
+    static let dayElevation = 25.0
 }
 
 /// Daylight from 0 (night) to 1 (full day), easing in and out between the two elevations.
 /// (Not `daylight`: Darwin already exports a global of that name.)
-package func daylightLevel(solarElevation elevation: Double) -> Double {
+func daylightLevel(solarElevation elevation: Double) -> Double {
     let span = DaylightRules.dayElevation - DaylightRules.nightElevation
     let progress = min(1, max(0, (elevation - DaylightRules.nightElevation) / span))
     return progress * progress * (3 - 2 * progress)
 }
 
-package func daylightLevel(at date: Date, at place: Coordinates) -> Double {
+func daylightLevel(at date: Date, at place: Coordinates) -> Double {
     daylightLevel(solarElevation: solarElevation(at: date, at: place))
 }
 
 // MARK: - Appearance
 
 /// The system appearance, Daylight's stand-in when there is no place to compute the sun for.
-package enum Appearance: String {
+public enum Appearance: String, Sendable {
     case light
     case dark
 }
 
 // MARK: - Location
 
-package enum LocationSource: String {
+public enum LocationSource: String, Equatable, Sendable {
     /// A Location Services fix taken this run.
     case fix
     /// The last fix from an earlier run, taken in the current time zone.
@@ -90,36 +91,31 @@ package enum LocationSource: String {
 }
 
 /// The last fix, stored between runs so a launch without Location Services still knows roughly where it is.
-package struct LocationCache: Equatable, Codable {
-    package let coordinates: Coordinates
-    package let timeZone: String
+public struct LocationCache: Equatable, Codable, Sendable {
+    public let coordinates: Coordinates
+    public let timeZone: String
 
-    package init(coordinates: Coordinates, timeZone: String) {
+    public init(coordinates: Coordinates, timeZone: String) {
         self.coordinates = coordinates
         self.timeZone = timeZone
     }
 }
 
 /// Stored and logged locations are rounded to a tenth of a degree (about 10 km): enough for sun times, no more.
-package func roundedForPrivacy(_ place: Coordinates) -> Coordinates {
+func roundedForPrivacy(_ place: Coordinates) -> Coordinates {
     Coordinates(
         latitude: (place.latitude * 10).rounded() / 10, longitude: (place.longitude * 10).rounded() / 10)
 }
 
-package struct ResolvedLocation: Equatable {
-    package let coordinates: Coordinates
-    package let source: LocationSource
-
-    package init(coordinates: Coordinates, source: LocationSource) {
-        self.coordinates = coordinates
-        self.source = source
-    }
+struct ResolvedLocation: Equatable {
+    let coordinates: Coordinates
+    let source: LocationSource
 }
 
 /// Where Daylight is computed for: this run's fix, else the cached fix, each only if taken in the current time zone
 /// (after travel both may be far away until a new fix arrives), else the time zone's reference city. Nil only for a
 /// zone with no place, e.g. UTC.
-package func resolveLocation(
+func resolveLocation(
     fix: LocationCache?, cached: LocationCache?, timeZone: String, zones: [String: Coordinates]
 ) -> ResolvedLocation? {
     if let fix, fix.timeZone == timeZone {
@@ -132,11 +128,11 @@ package func resolveLocation(
 }
 
 /// What Daylight was worked out from: the sun at a location, or the appearance when there is no place at all.
-package enum DaylightBasis: Equatable, CustomStringConvertible {
+public enum DaylightBasis: Equatable, CustomStringConvertible, Sendable {
     case sun(LocationSource)
     case appearance
 
-    package var description: String {
+    public var description: String {
         switch self {
         case .sun(let source): return source.rawValue
         case .appearance: return "appearance"
@@ -144,17 +140,27 @@ package enum DaylightBasis: Equatable, CustomStringConvertible {
     }
 }
 
+/// Daylight at one moment and what it was worked out from.
+public struct DaylightReading: Equatable, Sendable {
+    /// From 0 (night) to 1 (full day).
+    public let level: Double
+    public let basis: DaylightBasis
+
+    public init(level: Double, basis: DaylightBasis) {
+        self.level = level
+        self.basis = basis
+    }
+}
+
 /// Daylight now. With no place (a time zone like UTC and no fix) the appearance stands in: Dark as night, Light as
 /// day, so `dynamic` still means something.
-package func currentDaylight(
-    at date: Date, location: ResolvedLocation?, appearance: Appearance
-) -> (level: Double, basis: DaylightBasis) {
-    guard let location else { return (appearance == .dark ? 0 : 1, .appearance) }
-    return (daylightLevel(at: date, at: location.coordinates), .sun(location.source))
+func currentDaylight(at date: Date, location: ResolvedLocation?, appearance: Appearance) -> DaylightReading {
+    guard let location else { return DaylightReading(level: appearance == .dark ? 0 : 1, basis: .appearance) }
+    return DaylightReading(level: daylightLevel(at: date, at: location.coordinates), basis: .sun(location.source))
 }
 
 /// The time zone identifiers in `/usr/share/zoneinfo/zone.tab` with their reference city's coordinates.
-package func parseZoneTab(_ text: String) -> [String: Coordinates] {
+func parseZoneTab(_ text: String) -> [String: Coordinates] {
     var zones: [String: Coordinates] = [:]
     for line in text.split(separator: "\n") where !line.hasPrefix("#") {
         let fields = line.split(separator: "\t")

@@ -1,24 +1,92 @@
-import Application
-import Core
 import Daylight
+import Foundation
 
 // MARK: - Fake Daylight
-// Stands in for the Daylight service until ticket 04 replaces it with fakes of the location and time-zone-places
-// ports. Reports a fixed Daylight and counts the requests for Location Services.
+// Fakes of Daylight's ports, and `FakeDaylight`, which bundles them and builds the real `DaylightService` on them.
+// Location Services starts undetermined and records what it is asked; tests report its answers with `report(_:)`.
 
-package final class FakeDaylight: DaylightService {
-    package var level = 1.0
-    package private(set) var activations = 0
+package final class FakeLocation: LocationPort {
+    package var authorization: LocationAuthorization = .notDetermined
+    package var onUpdate: (LocationUpdate) -> Void = { _ in }
+    package private(set) var isStarted = false
+    package private(set) var authorizationRequests = 0
+    package private(set) var fixRequests = 0
 
     package init() {}
 
-    package var slice: DaylightSlice { DaylightSlice() }
-
-    package func activate() {
-        activations += 1
+    package func start() {
+        isStarted = true
     }
 
-    package func refresh(cause: String) {}
+    package func requestAuthorization() {
+        authorizationRequests += 1
+    }
 
-    package func current() -> (level: Double, basis: DaylightBasis) { (level, .sun(.timeZone)) }
+    package func requestFix() {
+        fixRequests += 1
+    }
+
+    /// What the system reports; an authorization change also updates `authorization`, as CoreLocation's does.
+    package func report(_ update: LocationUpdate) {
+        if case .authorizationChanged(let status) = update { authorization = status }
+        onUpdate(update)
+    }
+
+    /// Whether Location Services was touched at all.
+    package var wasAsked: Bool { isStarted || authorizationRequests > 0 || fixRequests > 0 }
+}
+
+package final class FakeTimeZonePlaces: TimeZonePlacesPort {
+    package static let newYork = Coordinates(latitude: 40.714_17, longitude: -74.006_39)
+    package static let london = Coordinates(latitude: 51.508_33, longitude: -0.125_28)
+
+    package var currentTimeZone: String
+    package let places: [String: Coordinates]
+
+    package init(
+        currentTimeZone: String = "America/New_York",
+        places: [String: Coordinates] = ["America/New_York": newYork, "Europe/London": london]
+    ) {
+        self.currentTimeZone = currentTimeZone
+        self.places = places
+    }
+}
+
+package final class FakeLocationCache: LocationCachePort {
+    /// Set before Daylight is first worked out to stand for a fix cached by an earlier run.
+    package var stored: LocationCache?
+    /// Set to make `save` fail with it.
+    package var saveError: Error?
+
+    package init(_ stored: LocationCache? = nil) {
+        self.stored = stored
+    }
+
+    package func load() -> LocationCache? { stored }
+
+    package func save(_ fix: LocationCache) throws {
+        if let saveError { throw saveError }
+        stored = fix
+    }
+}
+
+package final class FakeAppearance: AppearancePort {
+    package var current: Appearance = .light
+
+    package init() {}
+}
+
+/// Daylight's port fakes, and the real service built on them with the given wall clock.
+@MainActor
+package final class FakeDaylight {
+    package let location = FakeLocation()
+    package let appearance = FakeAppearance()
+    package let places = FakeTimeZonePlaces()
+    package let cache = FakeLocationCache()
+
+    package init() {}
+
+    package func service(now: @escaping () -> Date) -> DaylightService {
+        DaylightService(location: location, places: places, cache: cache, appearance: appearance, now: now)
+    }
 }

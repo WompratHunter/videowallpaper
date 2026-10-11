@@ -79,6 +79,7 @@ public final class Coordinator {
         connectRotation()
         connectPlayback()
         connectPresence()
+        connectDaylight()
         // The folder's videos now join the Rotation as their Analysis finishes, without counting as newly added.
         let present = libraryVideoNames
         launchDesktop()

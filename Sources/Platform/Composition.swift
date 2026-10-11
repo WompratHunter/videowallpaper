@@ -13,7 +13,7 @@ enum Composition {
             rotation: rotation(),
             playback: playback(),
             presence: presence(),
-            daylight: daylight(),
+            daylight: daylight(clock: clock),
             desktop: desktop(),
             launchAtLogin: launchAtLogin(),
             clock: clock,
