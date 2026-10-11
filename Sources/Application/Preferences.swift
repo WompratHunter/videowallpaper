@@ -14,7 +14,7 @@ public struct Preferences: Equatable {
     public var isEnabled: Bool
     /// Reserved for Choose Wallpaper folder (ticket 11): nil is the default folder.
     public var wallpaperFolder: URL?
-    /// Reserved for Set Launch at login (ticket 12).
+    /// Read from the launch-at-login port (Set Launch at login), never from the settings store.
     public var launchesAtLogin: Bool
 
     public init(

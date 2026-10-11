@@ -42,7 +42,9 @@ let package = Package(
             .target(name: "Application", dependencies: ["SharedKernel", "Core"] + contextDependencies),
             .target(
                 name: "Platform",
-                dependencies: ["Application", "App", "Core", "SharedKernel"] + contextDependencies),
+                dependencies: ["Application", "App", "Core", "SharedKernel"] + contextDependencies,
+                // The LaunchAgent plist `make install` writes, embedded so the launch-at-login adapter writes the same.
+                resources: [.embedInCode("com.videowallpaper.plist.template")]),
             .executableTarget(name: "VideoWallpaper", dependencies: ["Platform"]),
             .target(
                 name: "TestSupport",
@@ -51,6 +53,7 @@ let package = Package(
             .testTarget(
                 name: "ApplicationTests",
                 dependencies: ["Application", "TestSupport", "App", "Core", "SharedKernel"] + contextDependencies),
+            .testTarget(name: "PlatformTests", dependencies: ["Platform", "Application"]),
             // Legacy targets, emptied context by context.
             .target(name: "Core", dependencies: ["SharedKernel"] + contextDependencies),
             .target(name: "Analyser", dependencies: ["Core"]),

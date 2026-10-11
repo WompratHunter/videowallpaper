@@ -29,6 +29,7 @@ public final class Coordinator {
     let presence: PresenceService
     let daylight: DaylightService
     let desktop: DesktopService
+    let launchAtLogin: LaunchAtLoginPort
     let clock: ClockPort
     let settings: SettingsPort
 
@@ -44,6 +45,7 @@ public final class Coordinator {
         presence: PresenceService,
         daylight: DaylightService,
         desktop: DesktopService,
+        launchAtLogin: LaunchAtLoginPort,
         clock: ClockPort,
         settings: SettingsPort
     ) {
@@ -53,6 +55,7 @@ public final class Coordinator {
         self.presence = presence
         self.daylight = daylight
         self.desktop = desktop
+        self.launchAtLogin = launchAtLogin
         self.clock = clock
         self.settings = settings
     }
@@ -118,7 +121,7 @@ public final class Coordinator {
             presence: presence.slice,
             daylight: daylight.slice,
             desktop: desktop.slice,
-            preferences: settings.load())
+            preferences: preferences)
         guard next != snapshot else { return }
         snapshot = next
         snapshotObservers.forEach { $0(next) }

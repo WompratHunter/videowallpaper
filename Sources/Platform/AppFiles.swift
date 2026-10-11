@@ -21,6 +21,9 @@ enum AppFiles {
     /// Written into the Wallpaper folder by versions before Posters moved to Application Support.
     static let legacyPoster = wallpaperDirectory.appendingPathComponent(".poster.jpg")
     static let defaultDesktopPicture = URL(fileURLWithPath: "/System/Library/CoreServices/DefaultDesktop.heic")
+    /// The LaunchAgent `make install` writes; Set Launch at login writes or removes it.
+    static let launchAgentFile = URL(
+        fileURLWithPath: NSString("~/Library/LaunchAgents/com.videowallpaper.plist").expandingTildeInPath)
 
     static let ownPictures = OwnPictures(
         posterDirectory: posterDirectory.resolvingSymlinksInPath().path,
