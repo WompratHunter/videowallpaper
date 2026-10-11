@@ -4,7 +4,7 @@
 
 **Blocked by:** 06, 07, 08
 
-**Status:** done (installed 2d23f8f: launch logs mode=dynamic, first-video maomao in the Light half; debug-Dwell run left to the user)
+**Status:** done (installed 2d23f8f; debug-Dwell run passed, see 8acfda4)
 
 - [x] Rotation pick, Mode filtering and Dwell accounting are pure core functions with tests (band, no repeat in a Pass, Unseen-only big jump, new video next, removal, <4 → all, half exhausted → replay, Dwell pauses while asleep/locked)
 - [x] Switch scheduler wires Dwell + Visibility + Library + Player; each switch logged with reason, from/to, ΔL and fade
