@@ -9,7 +9,7 @@ The video playing behind the desktop icons on every display.
 _Avoid_: background, screensaver
 
 **Wallpaper folder**:
-The single folder whose videos feed the Live wallpaper; adding or removing a file there is the only user action.
+The single folder, chosen by the user, whose videos feed the Live wallpaper.
 
 **Video**:
 A file in the Wallpaper folder, known by its file name; renaming a file makes a new Video.
@@ -68,6 +68,13 @@ _Avoid_: mode (for these states)
 The macOS power-saving setting; the Live wallpaper shows only the Poster while it is on, and no Analysis runs.
 _Avoid_: power saving, "Mode" on its own
 
+**Enabled**:
+The Live wallpaper is on: windows show the Current video or its Poster, and the Poster is the system desktop picture.
+
+**Disabled**:
+The Live wallpaper is off and the user's own desktop picture is back on every screen; quitting the app disables it.
+_Avoid_: paused (that is a Playback state while Enabled), stopped
+
 **Lock screen**:
 The macOS screen shown on wake before unlocking; it displays the Poster, not the Live wallpaper.
 
@@ -82,12 +89,14 @@ The place in the Rotation's dark-to-bright ranking that the next pick aims for, 
 
 - The **Wallpaper folder** holds many videos; the **Rotation** is the eligible (non-**Excluded**) subset.
 - A **Video** has one or more **Versions** over time, but only its latest is in the Wallpaper folder; each **Version** has exactly one **Poster** and one **Analysis**.
+- Whenever the app is **Disabled**, the user's own desktop picture shows; the **Poster** is the desktop picture only while **Enabled**.
 - Pass history and the user's flash override belong to the **Video**, so they survive a new **Version** but not a rename.
 - Switching the **Current video** depends on **Dwell** and on **Presence** (**Unseen**, **Veiled** or **Visible**).
 - **Daylight** sets the **Target brightness**; the **Rotation** picks near it. A Current video far from the Target brightness makes a switch due early, but only at an **Unseen** or **Veiled** moment.
 
 ## Flagged ambiguities
 
+- The **Wallpaper folder** was first fixed, and dropping files was "the only user action"; the user now also chooses the folder, the **Mode**, flash overrides and whether the app is **Enabled**.
 - "Screensaver" was used for what is actually the **Lock screen**.
 - "Mode" was used for three things: the user's **Mode**, the **Playback state** and **Low Power Mode**. Only the first is "Mode".
 - "Lighting conditions" meant outdoor **Daylight**, not the room's light measured by the Mac's ambient light sensor.
