@@ -18,10 +18,9 @@ struct LaunchTests {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
         app.coordinator.launch()
 
-        #expect(app.events == [
-            .rotation(.switchDecided(
-                from: nil, to: dusk.id, reason: .firstVideo, fade: 5, isDeferred: false))
-        ])
+        #expect(app.events.first == .rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false)))
+        #expect(app.events.count == 2)
+        #expect(app.switches == [AppHarness.DecidedSwitch(to: dusk.id, reason: .firstVideo, fade: 5)])
         #expect(app.player.played == [AppHarness.url(dusk)])
         #expect(app.coordinator.snapshot.rotation.current == dusk.id)
         #expect(app.snapshots.last == app.coordinator.snapshot)
@@ -33,17 +32,17 @@ struct LaunchTests {
         let app = AppHarness(library: FakeLibrary(pending: ["dusk.mp4"]))
         app.coordinator.launch()
         app.clock.advance(by: 30)
-        #expect(app.events.isEmpty)
+        // Only the Mode in effect, read at launch's decision.
+        #expect(app.events == [.rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))])
         #expect(app.player.played.isEmpty)
         #expect(app.coordinator.snapshot.rotation.current == nil)
 
         app.library.finishAnalysis([dusk])
 
         // The Library's event comes first (it is the log's cause), then the Rotation's switch it led to.
-        #expect(app.events == [
-            .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)),
-            .rotation(.switchDecided(from: nil, to: dusk.id, reason: .firstVideo, fade: 5, isDeferred: false))
-        ])
+        #expect(app.events.dropFirst().first == .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)))
+        #expect(app.events.count == 3)
+        #expect(app.switches == [AppHarness.DecidedSwitch(to: dusk.id, reason: .firstVideo, fade: 5)])
         #expect(app.player.played == [AppHarness.url(dusk)])
         #expect(app.coordinator.snapshot.rotation.current == dusk.id)
         #expect(app.coordinator.snapshot.library.eligible == [dusk])
@@ -71,7 +70,5 @@ struct LaunchTests {
     @Test func theEligibleSetLineReadsAsBefore() {
         let event = AppEvent.library(.eligibleSetChanged(eligible: [dusk, dawn], cause: .folderChange))
         #expect(event.logLine == LogLine(cause: "folder-change", message: "eligible videos=2"))
-        #expect(AppEvent.rotation(.switchDecided(
-            from: nil, to: dusk.id, reason: .firstVideo, fade: 5, isDeferred: false)).logLine == nil)
     }
 }

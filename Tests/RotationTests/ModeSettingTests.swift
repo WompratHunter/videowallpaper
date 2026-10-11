@@ -1,4 +1,4 @@
-@testable import Core
+@testable import Rotation
 import Testing
 
 // MARK: - Mode setting tests

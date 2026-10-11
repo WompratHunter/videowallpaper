@@ -1,4 +1,3 @@
-import App
 import Application
 import Daylight
 import Desktop
@@ -12,7 +11,7 @@ import TestSupport
 
 // MARK: - App harness
 // The whole app on fakes: one coordinator with a fake clock and settings, a fake per context service and the real
-// Rotation (pure apart from logging), recording every event and snapshot. As each context ticket swaps its service
+// Rotation (on a fake appearance flag), recording every event and snapshot. As each context ticket swaps its service
 // for fakes of its ports, it changes its own lines here.
 
 @MainActor
@@ -22,7 +21,8 @@ final class AppHarness {
     let clock = FakeClock()
     let settings: FakeSettings
     let library: FakeLibrary
-    let rotation = RotationScheduler(directory: folder, dwellScale: 1)
+    let appearance = FakeAutoAppearance()
+    let rotation: RotationService
     let player = FakePlayer()
     let windows = FakeWindows()
     let power = FakePower()
@@ -37,7 +37,7 @@ final class AppHarness {
     init(library: FakeLibrary, preferences: Preferences = Preferences(modeSetting: "all")) {
         self.library = library
         settings = FakeSettings(preferences)
-        rotation.isAutoAppearance = { false }
+        rotation = RotationService(directory: Self.folder, appearance: appearance)
         coordinator = Coordinator(
             library: library,
             rotation: rotation,
@@ -61,8 +61,8 @@ final class AppHarness {
     /// The switches decided so far, in order.
     var switches: [DecidedSwitch] {
         events.compactMap { event in
-            guard case .rotation(.switchDecided(_, let to, let reason, let fade, _)) = event else { return nil }
-            return DecidedSwitch(to: to, reason: reason, fade: fade)
+            guard case .rotation(.switchDecided(let decision)) = event else { return nil }
+            return DecidedSwitch(to: decision.to, reason: decision.reason, fade: decision.fade)
         }
     }
 
