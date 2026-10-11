@@ -1,0 +1,3 @@
+# Contexts meet only in one coordinator, through typed events
+
+Contexts never call each other. Each publishes typed domain events and accepts commands; one coordinator in the `Application` target subscribes to the events and calls other contexts' commands, with the routing written out explicitly in one place. We chose this over a generic event bus because correctness depends on order (Dwell must hear of a lock before Presence reports it; a folder change must reach Rotation before Playback rebuilds), and a bus hides that order. The same events feed the log and the snapshot a future UI will read, so the log and the UI are two views of the same facts. The app is one process: the future UI calls the `Application` layer directly, with no IPC.
