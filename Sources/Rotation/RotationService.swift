@@ -17,7 +17,7 @@ public final class RotationService {
     private let appearance: AutoAppearancePort
     private var inputs = RotationInputs()
     private var state: RotationState
-    private var rng = SystemRandomNumberGenerator()
+    private var rng: any RandomNumberGenerator
     private var isWaitingForUnseen = false
     private var isDeciding = false
     private var lastModeLine: LogLine?
@@ -25,11 +25,17 @@ public final class RotationService {
     private var lastSwitch: SwitchReason?
 
     /// `directory`: the Wallpaper folder, where the Current video's file is. `dwellScale` shortens every minimum Dwell
-    /// for a manual test of a debug build; 1 otherwise.
-    public init(directory: URL, dwellScale: Double = 1, appearance: AutoAppearancePort) {
+    /// for a manual test of a debug build; 1 otherwise. `rng` makes the picks; a test passes a seeded one.
+    public init(
+        directory: URL,
+        dwellScale: Double = 1,
+        appearance: AutoAppearancePort,
+        rng: any RandomNumberGenerator = SystemRandomNumberGenerator()
+    ) {
         self.directory = directory
         self.dwellScale = dwellScale
         self.appearance = appearance
+        self.rng = rng
         state = RotationState(present: [], dwellScale: dwellScale)
     }
 

@@ -31,7 +31,7 @@ private final class Harness {
         appearance = StubAppearance(isAutoAppearance)
         service = RotationService(
             directory: URL(fileURLWithPath: "/fake", isDirectory: true), dwellScale: dwellScale,
-            appearance: appearance)
+            appearance: appearance, rng: SeededGenerator(state: 0))
         service.onEvent = { [weak self] event in self?.events.append(event) }
         inputs.uptime = { [weak self] in self?.now ?? 0 }
         inputs.eligibleVideos = { [weak self] in self?.eligible ?? [] }
