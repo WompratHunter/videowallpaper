@@ -10,6 +10,9 @@ import Foundation
 /// are undocumented. The documented public fallback, should they ever stop arriving, is the screens sleep/wake and
 /// session active/inactive notifications, which reach Presence as their own inputs: a locked Mac whose screens sleep
 /// or whose session is switched away is still Unseen, and their wake and active events verify playback as unlock does.
+/// To fall back, build an adapter whose `onChange` never fires; nothing else changes. What is lost: a locked Mac with
+/// its screens awake is Unseen only through occlusion (the Lock screen covers every wallpaper window), which Dwell
+/// counts as time at the desk, and unlock no longer resets the Recovery backoff.
 @MainActor
 public protocol LockSignalPort: AnyObject {
     /// Called on the main actor: true on lock, false on unlock.
