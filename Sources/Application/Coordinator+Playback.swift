@@ -1,4 +1,4 @@
-import Core
+import Core // Legacy: Crossfade and RecoveryBackoff, until ticket 07 moves them into Playback
 import Foundation
 
 // MARK: - Playback routes
@@ -97,6 +97,6 @@ extension Coordinator {
     package func powerStateChanged() {
         let isOn = isLowPowerMode
         playback.player.apply(.lowPower(isOn))
-        libraryPowerSavingChanged(isOn)
+        libraryLowPowerModeChanged(isOn)
     }
 }
