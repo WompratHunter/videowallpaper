@@ -1,43 +1,44 @@
 import Foundation
 
-// MARK: - Desktop pictures
-// Recording and restoring the user's own desktop picture per screen, so uninstall leaves the system as it was.
+// MARK: - Footprint
+// Recording and restoring the user's own desktop picture per screen, so uninstall leaves the system as it was. The
+// decisions are pure; `DesktopService` gathers their inputs from the ports and applies the result.
 
-package struct DesktopPictureOptions: Codable, Equatable {
+public struct DesktopPictureOptions: Codable, Equatable, Sendable {
     /// `NSImageScaling` raw value.
-    package var scaling: UInt?
-    package var allowsClipping: Bool?
+    public var scaling: UInt?
+    public var allowsClipping: Bool?
     /// sRGB red, green, blue, alpha.
-    package var fillColor: [Double]?
+    public var fillColor: [Double]?
 
-    package init(scaling: UInt? = nil, allowsClipping: Bool? = nil, fillColor: [Double]? = nil) {
+    public init(scaling: UInt? = nil, allowsClipping: Bool? = nil, fillColor: [Double]? = nil) {
         self.scaling = scaling
         self.allowsClipping = allowsClipping
         self.fillColor = fillColor
     }
 }
 
-package struct DesktopPicture: Codable, Equatable {
-    package let path: String
-    package let options: DesktopPictureOptions
+public struct DesktopPicture: Codable, Equatable, Sendable {
+    public let path: String
+    public let options: DesktopPictureOptions
 
-    package init(path: String, options: DesktopPictureOptions) {
+    public init(path: String, options: DesktopPictureOptions) {
         self.path = path
         self.options = options
     }
 }
 
 /// The pictures this app sets: Posters in Application Support and the legacy hidden Poster in the Wallpaper folder.
-package struct OwnPictures {
-    package let posterDirectory: String
-    package let legacyPoster: String
+public struct OwnPictures: Sendable {
+    public let posterDirectory: String
+    public let legacyPoster: String
 
-    package init(posterDirectory: String, legacyPoster: String) {
+    public init(posterDirectory: String, legacyPoster: String) {
         self.posterDirectory = posterDirectory
         self.legacyPoster = legacyPoster
     }
 
-    package func contains(_ path: String) -> Bool {
+    public func contains(_ path: String) -> Bool {
         let path = (path as NSString).standardizingPath
         let directory = (posterDirectory as NSString).standardizingPath
         return path == (legacyPoster as NSString).standardizingPath || path.hasPrefix(directory + "/")
@@ -45,19 +46,19 @@ package struct OwnPictures {
 }
 
 /// The user's desktop picture per screen before this app first changed it, keyed by a stable screen identifier.
-package struct OriginalPictures: Codable, Equatable {
-    package var screens: [String: DesktopPicture]
+struct OriginalPictures: Codable, Equatable {
+    var screens: [String: DesktopPicture]
 
-    package init(screens: [String: DesktopPicture]) {
+    init(screens: [String: DesktopPicture]) {
         self.screens = screens
     }
 
-    package init?(json: Data) {
+    init?(json: Data) {
         guard let decoded = try? JSONDecoder().decode(Self.self, from: json) else { return nil }
         self = decoded
     }
 
-    package func json() -> Data {
+    func json() -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
@@ -71,7 +72,7 @@ package struct OriginalPictures: Codable, Equatable {
 /// What to save before setting a Poster, or nil when the record is unchanged. Recorded entries are never
 /// overwritten, so later runs (when the screens show the Poster) keep the true original. A screen not yet recorded
 /// is added unless it already shows our Poster, because then its original is unknown.
-package func originalsToRecord(
+func originalsToRecord(
     existing: OriginalPictures?, current: [String: DesktopPicture], ownPictures own: OwnPictures
 ) -> OriginalPictures? {
     var record = existing ?? OriginalPictures(screens: [:])
@@ -85,7 +86,7 @@ package func originalsToRecord(
 /// The picture to set per screen to undo this app. Only screens showing our Poster are touched: a picture the user
 /// chose since install stays. A screen with no usable record falls back to another screen's original, then to the
 /// system default picture.
-package func restorePlan(
+func restorePlan(
     originals: OriginalPictures?,
     current: [String: DesktopPicture],
     ownPictures own: OwnPictures,
