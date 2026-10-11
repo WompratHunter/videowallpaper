@@ -6,18 +6,37 @@ import PackageDescription
 // that knows every concrete type. The legacy `Core` (Foundation-only domain), `App` (AppKit/AVFoundation adapters)
 // and `Analyser` targets hold the code still to move into its context; each later ticket moves its own files.
 // Swift 6 language mode comes last.
+// Each context's target and test target is one line of its own, so a context ticket adds a dependency on its own
+// line without touching another's.
 let contexts = ["Library", "Rotation", "Playback", "Presence", "Daylight", "Desktop"]
 let contextDependencies = contexts.map { Target.Dependency(stringLiteral: $0) }
+let contextTargets: [Target] = [
+    .target(name: "Library", dependencies: ["SharedKernel"]),
+    .target(name: "Rotation", dependencies: ["SharedKernel"]),
+    .target(name: "Playback", dependencies: ["SharedKernel"]),
+    .target(name: "Presence", dependencies: ["SharedKernel"]),
+    .target(name: "Daylight", dependencies: ["SharedKernel"]),
+    .target(name: "Desktop", dependencies: ["SharedKernel"])
+]
+let contextTestTargets: [Target] = [
+    .testTarget(name: "LibraryTests", dependencies: ["Library", "SharedKernel"]),
+    .testTarget(name: "RotationTests", dependencies: ["Rotation", "SharedKernel"]),
+    .testTarget(name: "PlaybackTests", dependencies: ["Playback", "SharedKernel"]),
+    .testTarget(name: "PresenceTests", dependencies: ["Presence", "SharedKernel"]),
+    .testTarget(name: "DaylightTests", dependencies: ["Daylight", "SharedKernel"]),
+    .testTarget(name: "DesktopTests", dependencies: ["Desktop", "SharedKernel"])
+]
 
 let package = Package(
     name: "VideoWallpaper",
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "videowallpaper", targets: ["VideoWallpaper"]),
-        .executable(name: "smoke", targets: ["Smoke"])
+        .executable(name: "smoke", targets: ["Smoke"]),
+        // What a thin Xcode app target (App Store phase) links to call `VideoWallpaperApp.run()`.
+        .library(name: "VideoWallpaperPlatform", targets: ["Platform"])
     ],
-    targets: contexts.map { .target(name: $0, dependencies: ["SharedKernel"]) }
-        + contexts.map { .testTarget(name: "\($0)Tests", dependencies: [.init(stringLiteral: $0), "SharedKernel"]) }
+    targets: contextTargets + contextTestTargets
         + [
             .target(name: "SharedKernel"),
             .target(name: "Application", dependencies: ["SharedKernel", "Core"] + contextDependencies),
