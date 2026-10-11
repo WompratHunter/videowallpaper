@@ -1,6 +1,12 @@
+import SharedKernel
+
 // MARK: - Presence slice
-// Presence's part of the app snapshot, empty for now. Ticket 03 adds the current Presence.
+// Presence's part of the app snapshot: whether a switch would be seen right now.
 
 public struct PresenceSlice: Equatable {
-    public init() {}
+    public var current: Presence
+
+    public init(current: Presence = .visible) {
+        self.current = current
+    }
 }

@@ -26,7 +26,10 @@ final class AppHarness {
     let player = FakePlayer()
     let windows = FakeWindows()
     let power = FakePower()
-    let presence = FakePresence()
+    let lockSignal = FakeLockSignal()
+    let windowList = FakeWindowList()
+    let presenceClock: FakePresenceClock
+    let presence: PresenceService
     let daylight = FakeDaylight()
     let desktop = FakeDesktop()
     let launchAtLogin = FakeLaunchAtLogin()
@@ -38,6 +41,8 @@ final class AppHarness {
         self.library = library
         settings = FakeSettings(preferences)
         rotation = RotationService(directory: Self.folder, appearance: appearance)
+        presenceClock = FakePresenceClock { [clock] in clock.now }
+        presence = PresenceService(lockSignal: lockSignal, windowList: windowList, clock: presenceClock)
         coordinator = Coordinator(
             library: library,
             rotation: rotation,
