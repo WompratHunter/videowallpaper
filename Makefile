@@ -17,17 +17,17 @@ SIGN_ID    = $(or $(shell security find-identity -v -p codesigning 2>/dev/null |
 
 # `install` writes a new inode, so the running binary is never overwritten in place.
 install: build
-	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(VIDEO_DIR) $(HOME)/Library/Logs
-	@cp Info.plist $(APP)/Contents/Info.plist
-	@install -m 755 "$(RELEASE_DIR)/videowallpaper" $(BINARY)
+	@mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources" "$(VIDEO_DIR)" "$(HOME)/Library/Logs"
+	@cp Info.plist "$(APP)/Contents/Info.plist"
+	@install -m 755 "$(RELEASE_DIR)/videowallpaper" "$(BINARY)"
 	@# The first signing asks for keychain access: choose Always Allow. If the key is refused, sign ad-hoc so the
 	@# install still completes (Location Services may then ask again after a later reinstall).
 	@codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "$(APP)" \
 		|| { echo "! Could not sign with $(SIGN_ID); signing ad-hoc"; \
 		     codesign --force --sign - --identifier $(BUNDLE_ID) "$(APP)"; }
-	@sed 's|__HOME__|$(HOME)|g' $(PLIST_SRC) > $(PLIST_DST)
-	@launchctl unload $(PLIST_DST) 2>/dev/null || true
-	@launchctl load $(PLIST_DST)
+	@sed 's|__HOME__|$(HOME)|g' "$(PLIST_SRC)" > "$(PLIST_DST)"
+	@launchctl unload "$(PLIST_DST)" 2>/dev/null || true
+	@launchctl load "$(PLIST_DST)"
 	@echo "✓ Installed. Drop .mp4 files into $(VIDEO_DIR)/"
 
 lint:
