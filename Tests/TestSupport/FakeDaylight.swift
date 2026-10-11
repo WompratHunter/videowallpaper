@@ -5,6 +5,7 @@ import Foundation
 // Fakes of Daylight's ports, and `FakeDaylight`, which bundles them and builds the real `DaylightService` on them.
 // Location Services starts undetermined and records what it is asked; tests report its answers with `report(_:)`.
 
+@MainActor
 package final class FakeLocation: LocationPort {
     package var authorization: LocationAuthorization = .notDetermined
     package var onUpdate: (LocationUpdate) -> Void = { _ in }
@@ -70,6 +71,7 @@ package final class FakeLocationCache: LocationCachePort {
     }
 }
 
+@MainActor
 package final class FakeAppearance: AppearancePort {
     package var current: Appearance = .light
 

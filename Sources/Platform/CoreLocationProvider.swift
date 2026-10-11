@@ -4,9 +4,11 @@ import Daylight
 
 // MARK: - CoreLocation provider
 // The location port's adapter: Location Services authorization and a one-shot fix at kilometre accuracy. The manager
-// is made on the main thread, so its delegate calls arrive there. The fix is handed on precise; Daylight rounds it.
+// is made on the main actor, so its delegate calls arrive there (checked at run time by the `@preconcurrency`
+// conformance). The fix is handed on precise; Daylight rounds it.
 
-final class CoreLocationProvider: NSObject, LocationPort, CLLocationManagerDelegate {
+@MainActor
+final class CoreLocationProvider: NSObject, LocationPort, @preconcurrency CLLocationManagerDelegate {
     var onUpdate: (LocationUpdate) -> Void = { _ in }
     private let manager = CLLocationManager()
 
@@ -60,6 +62,7 @@ final class CoreLocationProvider: NSObject, LocationPort, CLLocationManagerDeleg
 // MARK: - System appearance
 
 /// The appearance port's adapter: the app's effective appearance, Light or Dark.
+@MainActor
 final class SystemAppearance: AppearancePort {
     var current: Appearance {
         NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
