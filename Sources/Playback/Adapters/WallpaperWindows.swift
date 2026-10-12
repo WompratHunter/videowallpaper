@@ -43,9 +43,10 @@ package final class WallpaperWindows: WallpaperWindowsPort {
     private func observeOcclusion() {
         guard occlusionObserver == nil else { return }
         occlusionObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: nil
+            forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main
         ) { [weak self] note in
-            // Windows post it on the main thread.
+            // Observed on the main queue, so `assumeIsolated` holds; windows post it on the main thread, where the
+            // main queue delivers it synchronously, as before.
             MainActor.assumeIsolated { self?.occlusionChanged(note) }
         }
     }
