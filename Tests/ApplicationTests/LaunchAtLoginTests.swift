@@ -16,7 +16,9 @@ struct LaunchAtLoginTests {
 
         #expect(app.coordinator.snapshot.preferences.launchesAtLogin == false)
         // Only the Rotation's Mode in effect, read at launch's decision.
-        #expect(app.events == [.rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))])
+        #expect(app.eventsBesidesPlayback == [
+            .rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))
+        ])
     }
 
     @Test func turningItOffStopsTheNextLoginStart() throws {
