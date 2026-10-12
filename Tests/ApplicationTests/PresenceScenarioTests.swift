@@ -60,7 +60,7 @@ struct PresenceScenarioTests {
 
         // A translucent window (e.g. Ghostty) over every screen leaves each window's visible flag set.
         app.windowList.coverEveryScreen()
-        app.windows.onOcclusionChange(false)
+        app.windows.occlude(false)
         app.clock.advance(by: 10 * 60)
 
         #expect(app.coordinator.snapshot.presence.current == .visible)
@@ -68,7 +68,7 @@ struct PresenceScenarioTests {
         #expect(app.switches.count == 1)
 
         // An opaque one clears it, and nobody is watching.
-        app.windows.onOcclusionChange(true)
+        app.windows.occlude(true)
         #expect(app.coordinator.snapshot.presence.current == .unseen)
     }
 

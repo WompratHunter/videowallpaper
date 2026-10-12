@@ -17,7 +17,7 @@ struct RotationScenarioTests {
 
     @Test func aNewlyAddedVideoPlaysAtTheNextAllowedSwitch() {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk, dawn]))
-        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
+        app.windows.occlude(true)
         app.coordinator.launch()
         app.clock.advance(by: 60)
 
@@ -45,7 +45,7 @@ struct RotationScenarioTests {
         #expect(app.coordinator.snapshot.rotation.dwell == 25 * 60)
         #expect(app.coordinator.snapshot.rotation.nextMinimumDwell == TimeInterval(60 * 60))
 
-        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
+        app.windows.occlude(true)
 
         let next = first == dusk.id ? dawn.id : dusk.id
         #expect(app.switches.last == AppHarness.DecidedSwitch(to: next, reason: .dwell, fade: 5))
@@ -75,7 +75,10 @@ struct RotationScenarioTests {
         let first = try #require(app.switches.first?.to)
         let remaining = first == dusk.id ? dawn : dusk
 
+        app.files.delete(AppHarness.folder.appendingPathComponent(first.fileName))
         app.library.finishAnalysis([remaining])
+        // Playback's Recovery rebuilds at once (asynchronously) with the replacement.
+        app.playbackClock.advance(by: 0)
 
         // No tick and no Dwell: the folder change itself replaced it.
         #expect(app.switches.last == AppHarness.DecidedSwitch(to: remaining.id, reason: .currentRemoved, fade: 5))
