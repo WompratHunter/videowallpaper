@@ -36,7 +36,9 @@ struct RoutingOrderTests {
         let next = first == AppHarness.url(dusk) ? dawn : dusk
 
         // The Current video is deleted: the Rotation replaces it and the player switches before its Poster arrives.
+        app.files.delete(first)
         app.library.finishAnalysis([next])
+        app.playbackClock.advance(by: 0)
         #expect(app.player.video == AppHarness.url(next))
 
         let stale = URL(fileURLWithPath: "/fake/posters/first.jpg")

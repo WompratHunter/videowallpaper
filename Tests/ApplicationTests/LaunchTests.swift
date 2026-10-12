@@ -18,8 +18,10 @@ struct LaunchTests {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
         app.coordinator.launch()
 
-        #expect(app.events.first == .rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false)))
-        #expect(app.events.count == 2)
+        #expect(
+            app.eventsBesidesPlayback.first
+                == .rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false)))
+        #expect(app.eventsBesidesPlayback.count == 2)
         #expect(app.switches == [AppHarness.DecidedSwitch(to: dusk.id, reason: .firstVideo, fade: 5)])
         #expect(app.player.played == [AppHarness.url(dusk)])
         #expect(app.coordinator.snapshot.rotation.current == dusk.id)
@@ -33,15 +35,21 @@ struct LaunchTests {
         app.coordinator.launch()
         app.clock.advance(by: 30)
         // Only the Mode in effect, read at launch's decision.
-        #expect(app.events == [.rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))])
+        #expect(app.eventsBesidesPlayback == [
+            .rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))
+        ])
         #expect(app.player.played.isEmpty)
         #expect(app.coordinator.snapshot.rotation.current == nil)
 
         app.library.finishAnalysis([dusk])
+        // Resting without a video, Playback rebuilds at once (asynchronously) when one becomes available.
+        app.playbackClock.advance(by: 0)
 
         // The Library's event comes first (it is the log's cause), then the Rotation's switch it led to.
-        #expect(app.events.dropFirst().first == .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)))
-        #expect(app.events.count == 3)
+        #expect(
+            app.eventsBesidesPlayback.dropFirst().first
+                == .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)))
+        #expect(app.eventsBesidesPlayback.count == 3)
         #expect(app.switches == [AppHarness.DecidedSwitch(to: dusk.id, reason: .firstVideo, fade: 5)])
         #expect(app.player.played == [AppHarness.url(dusk)])
         #expect(app.coordinator.snapshot.rotation.current == dusk.id)

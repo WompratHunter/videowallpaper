@@ -26,6 +26,9 @@ final class AppHarness {
     let player = FakePlayer()
     let windows = FakeWindows()
     let power = FakePower()
+    let screens = FakeScreenSession()
+    let files = FakeVideoFiles()
+    let playbackClock: FakePlaybackClock
     let lockSignal = FakeLockSignal()
     let windowList = FakeWindowList()
     let presenceClock: FakePresenceClock
@@ -40,13 +43,16 @@ final class AppHarness {
     init(library: FakeLibrary, preferences: Preferences = Preferences(modeSetting: "all")) {
         self.library = library
         settings = FakeSettings(preferences)
+        playbackClock = FakePlaybackClock(clock)
         rotation = RotationService(directory: Self.folder, appearance: appearance)
         presenceClock = FakePresenceClock { [clock] in clock.now }
         presence = PresenceService(lockSignal: lockSignal, windowList: windowList, clock: presenceClock)
         coordinator = Coordinator(
             library: library,
             rotation: rotation,
-            playback: PlaybackService(player: player, windows: windows, power: power),
+            playback: PlaybackService(
+                player: player, windows: windows, power: power, screens: screens, clock: playbackClock,
+                fileExists: files.exists),
             presence: presence,
             daylight: daylight.service { [clock] in clock.now },
             desktop: desktop.service,
@@ -68,6 +74,22 @@ final class AppHarness {
         events.compactMap { event in
             guard case .rotation(.switchDecided(let decision)) = event else { return nil }
             return DecidedSwitch(to: decision.to, reason: decision.reason, fade: decision.fade)
+        }
+    }
+
+    /// Every event but Playback's own, for tests about the other contexts.
+    var eventsBesidesPlayback: [AppEvent] {
+        events.filter { event in
+            if case .playback = event { return false }
+            return true
+        }
+    }
+
+    /// Playback's events so far, in order.
+    var playbackEvents: [PlaybackEvent] {
+        events.compactMap { event in
+            guard case .playback(let playbackEvent) = event else { return nil }
+            return playbackEvent
         }
     }
 
