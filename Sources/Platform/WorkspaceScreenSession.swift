@@ -3,7 +3,8 @@ import Playback
 
 // MARK: - Screen and session notifications
 // The screen/session port's adapter: NSWorkspace's screen sleep/wake, system wake and session notifications, and
-// NSApplication's screen parameters change. All are posted on the main thread.
+// NSApplication's screen parameters change. All are posted on the main thread and observed on the main queue, which
+// delivers them synchronously there and makes `MainActor.assumeIsolated` safe even if one ever arrived off it.
 
 @MainActor
 final class WorkspaceScreenSession: ScreenSessionPort {
@@ -26,7 +27,7 @@ final class WorkspaceScreenSession: ScreenSessionPort {
     }
 
     private func observe(_ center: NotificationCenter, _ name: Notification.Name, _ event: ScreenSessionEvent) {
-        let token = center.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+        let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.onEvent(event) }
         }
         observers.append((center, token))
