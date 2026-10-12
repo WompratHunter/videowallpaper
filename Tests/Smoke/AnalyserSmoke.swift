@@ -1,6 +1,5 @@
-import Analyser
 import AVFoundation
-import Core
+import Library
 
 // MARK: - Analyser smoke test
 // Runs the real analyser end to end on generated 2 s clips with a known flash rate. With file arguments it instead
@@ -24,7 +23,7 @@ enum AnalyserSmoke {
             defer { try? FileManager.default.removeItem(at: clip) }
             do {
                 try await writeClip(to: clip, hertz: hertz)
-                let measured = try await LibraryAnalyser.measure(clip)
+                let measured = try await AVFoundationAnalyser().measure(clip)
                 let verdict = flashVerdict(flashesPerSecond: measured.flashesPerSecond, fileName: "", overrides: [])
                 let isExpected = measured.flashesPerSecond == Double(hertz) && verdict == expected
                 if !isExpected { failures += 1 }
@@ -41,7 +40,7 @@ enum AnalyserSmoke {
         for video in videos {
             let start = Date()
             do {
-                let measured = try await LibraryAnalyser.measure(video)
+                let measured = try await AVFoundationAnalyser().measure(video)
                 let took = String(format: "%.1f", Date().timeIntervalSince(start))
                 report("\(video.lastPathComponent): \(describe(measured)) took=\(took)s")
             } catch {

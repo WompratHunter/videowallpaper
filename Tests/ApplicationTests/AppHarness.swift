@@ -44,7 +44,7 @@ final class AppHarness {
         presenceClock = FakePresenceClock { [clock] in clock.now }
         presence = PresenceService(lockSignal: lockSignal, windowList: windowList, clock: presenceClock)
         coordinator = Coordinator(
-            library: library,
+            library: library.service,
             rotation: rotation,
             playback: PlaybackService(player: player, windows: windows, power: power),
             presence: presence,

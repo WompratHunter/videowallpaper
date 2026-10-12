@@ -1,30 +1,30 @@
 import AVFoundation
-import Core
 
-// MARK: - Analyser
-// Decodes every frame of a video at reduced resolution and feeds it to the Core FlashScreener. AVFoundation only (no
-// AppKit), in its own target so the smoke runner shares it with the app.
+// MARK: - Analyser adapter
+// Decodes every frame of a video at reduced resolution and feeds it to the FlashScreener. AVFoundation only (no
+// AppKit); public, so the smoke runner checks the same analyser the app uses.
 
-package enum LibraryAnalyser {
+public struct AVFoundationAnalyser: VideoAnalyser {
     /// Small enough to decode cheaply; each of the 12x12 cells is still 16x9 pixels. The decoder scales to it.
     private static let width = 192
     private static let height = 108
 
-    package enum Failure: Error {
+    enum Failure: Error {
         case noVideoTrack
         case unreadable(String)
     }
 
-    /// Mean luminance, the worst flash rate and the Poster time. Blocks while it decodes, so call it off the main
-    /// thread; a 20 s 4K60 clip takes a few seconds. Throws `CancellationError` soon after its task is cancelled.
-    package static func measure(_ video: URL) async throws -> FrameMeasurement {
+    public init() {}
+
+    /// Blocks while it decodes, so call it off the main actor; a 20 s 4K60 clip takes a few seconds.
+    public func measure(_ video: URL) async throws -> FrameMeasurement {
         let asset = AVURLAsset(url: video)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw Failure.noVideoTrack }
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height
+            kCVPixelBufferWidthKey as String: Self.width,
+            kCVPixelBufferHeightKey as String: Self.height
         ])
         output.alwaysCopiesSampleData = false
         reader.add(output)
@@ -37,7 +37,7 @@ package enum LibraryAnalyser {
                 reader.cancelReading()
                 throw CancellationError()
             }
-            guard let cells = cellLuminances(of: sample) else { continue }
+            guard let cells = Self.cellLuminances(of: sample) else { continue }
             screener.add(
                 regions: FlashGrid.regions(cells: cells),
                 at: CMSampleBufferGetPresentationTimeStamp(sample).seconds)
@@ -49,14 +49,15 @@ package enum LibraryAnalyser {
         return measurement
     }
 
-    /// The frame at the Poster time, full size up to 4K.
-    package static func posterImage(of video: URL, at seconds: Double) async throws -> CGImage {
+    /// Exact for Analysis, so the Poster is the frame it chose rather than the nearest keyframe.
+    public func frame(of video: URL, at seconds: Double, exact: Bool) async throws -> CGImage {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: video))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 3840, height: 2160)
-        // Exact, so the Poster is the frame Analysis chose rather than the nearest keyframe.
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
+        if exact {
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+        }
         return try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
     }
 

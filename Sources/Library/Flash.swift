@@ -4,13 +4,13 @@ import Foundation
 // An approximate screener for the WCAG 2.3.1 general flash threshold: luminance only, no red-flash test.
 
 /// sRGB byte to linear light, precomputed because Analysis converts every pixel of every frame.
-package let srgbToLinear: [Double] = (0..<256).map { byte in
+let srgbToLinear: [Double] = (0..<256).map { byte in
     let encoded = Double(byte) / 255
     return encoded <= 0.040_45 ? encoded / 12.92 : pow((encoded + 0.055) / 1.055, 2.4)
 }
 
 /// BT.709 (sRGB primaries) relative luminance, 0 (black) to 1 (white).
-package func relativeLuminance(red: UInt8, green: UInt8, blue: UInt8) -> Double {
+func relativeLuminance(red: UInt8, green: UInt8, blue: UInt8) -> Double {
     0.2126 * srgbToLinear[Int(red)] + 0.7152 * srgbToLinear[Int(green)] + 0.0722 * srgbToLinear[Int(blue)]
 }
 
@@ -20,13 +20,13 @@ package func relativeLuminance(red: UInt8, green: UInt8, blue: UInt8) -> Double 
 // neighbourhoods (each 4/144, about 2.8% of the frame), catches a flash confined to a small part of the picture;
 // the full frame is checked as well.
 
-package enum FlashGrid {
-    package static let size = 12
+enum FlashGrid {
+    static let size = 12
     /// The full frame plus one region per 2x2 neighbourhood.
-    package static let regionCount = 1 + (size - 1) * (size - 1)
+    static let regionCount = 1 + (size - 1) * (size - 1)
 
     /// The mean luminance of each of the 12x12 cells (row-major) of a BGRA frame.
-    package static func cellLuminances(
+    static func cellLuminances(
         bgra: UnsafeRawBufferPointer, width: Int, height: Int, bytesPerRow: Int
     ) -> [Double] {
         var sums = [Double](repeating: 0, count: size * size)
@@ -46,7 +46,7 @@ package enum FlashGrid {
     }
 
     /// The full frame's mean luminance first, then each overlapping 2x2 neighbourhood's.
-    package static func regions(cells: [Double]) -> [Double] {
+    static func regions(cells: [Double]) -> [Double] {
         var regions = [cells.reduce(0, +) / Double(cells.count)]
         for row in 0..<(size - 1) {
             for column in 0..<(size - 1) {
@@ -63,9 +63,9 @@ package enum FlashGrid {
 // 0.80. A change is measured from the last extreme, not from the previous frame, so a fade spread over many frames
 // still counts once, while a slow drift that never reverses within a second never makes a pair.
 
-package struct TransitionDetector {
-    package static let minimumChange = 0.10
-    package static let darkerStateLimit = 0.80
+struct TransitionDetector {
+    static let minimumChange = 0.10
+    static let darkerStateLimit = 0.80
     /// Tolerates rounding in luminance that is exactly 0.10 apart.
     private static let epsilon = 1e-9
 
@@ -79,7 +79,7 @@ package struct TransitionDetector {
     private var extreme = 0.0
 
     /// Adds the next frame's value; returns true when it completes a qualifying change.
-    package mutating func add(_ value: Double) -> Bool {
+    mutating func add(_ value: Double) -> Bool {
         switch direction {
         case .none:
             lowest = min(lowest, value)
@@ -112,18 +112,24 @@ package struct TransitionDetector {
 // MARK: - Screener
 // Fed every frame of a video in order; keeps one detector per region and the transitions of the last second.
 
-/// The measurements Analysis takes from a video's frames.
-package struct FrameMeasurement: Equatable {
+/// The measurements Analysis takes from a video's frames: what the analyser port hands back.
+public struct FrameMeasurement: Equatable, Sendable {
     /// Mean relative luminance over every frame.
-    package let meanLuminance: Double
+    public let meanLuminance: Double
     /// The most flashes in any 1 s window, in any region: half the opposing transitions, so an unpaired transition
     /// counts as half a flash and 7 transitions in a second (3.5) is over the limit, the conservative reading.
-    package let flashesPerSecond: Double
+    public let flashesPerSecond: Double
     /// Where the Poster comes from: the frame closest to the mean luminance.
-    package let posterSeconds: Double
+    public let posterSeconds: Double
+
+    public init(meanLuminance: Double, flashesPerSecond: Double, posterSeconds: Double) {
+        self.meanLuminance = meanLuminance
+        self.flashesPerSecond = flashesPerSecond
+        self.posterSeconds = posterSeconds
+    }
 }
 
-package struct FlashScreener {
+struct FlashScreener {
     private static let window = 1.0
     private static let epsilon = 1e-6
 
@@ -134,10 +140,10 @@ package struct FlashScreener {
     private var frameLuminances: [Double] = []
     private var frameTimes: [Double] = []
 
-    package init() {}
+    init() {}
 
     /// Adds one frame's region luminances (see `FlashGrid.regions`), at its presentation time in seconds.
-    package mutating func add(regions: [Double], at seconds: Double) {
+    mutating func add(regions: [Double], at seconds: Double) {
         frameLuminances.append(regions[0])
         frameTimes.append(seconds)
         for index in regions.indices where detectors[index].add(regions[index]) {
@@ -148,7 +154,7 @@ package struct FlashScreener {
     }
 
     /// Nil when no frame was added.
-    package var measurement: FrameMeasurement? {
+    var measurement: FrameMeasurement? {
         guard let poster = posterFrameIndex(luminances: frameLuminances) else { return nil }
         return FrameMeasurement(
             meanLuminance: frameLuminances.reduce(0, +) / Double(frameLuminances.count),
@@ -161,7 +167,7 @@ package struct FlashScreener {
 
 /// The frame closest to the mean luminance (the earliest on a tie), so the Poster represents the video rather than a
 /// dark intro or a bright flash.
-package func posterFrameIndex(luminances: [Double]) -> Int? {
+func posterFrameIndex(luminances: [Double]) -> Int? {
     guard !luminances.isEmpty else { return nil }
     let mean = luminances.reduce(0, +) / Double(luminances.count)
     return luminances.indices.min { (abs(luminances[$0] - mean), $0) < (abs(luminances[$1] - mean), $1) }
@@ -169,6 +175,7 @@ package func posterFrameIndex(luminances: [Double]) -> Int? {
 
 // MARK: - Flash verdict
 
+/// `package` for the smoke runner, which checks the analyser's verdict end to end.
 package enum FlashVerdict: Equatable {
     case withinLimit
     case excluded
@@ -177,12 +184,12 @@ package enum FlashVerdict: Equatable {
 
     package static let limitPerSecond = 3.0
 
-    package var isPlayable: Bool { self != .excluded }
+    var isPlayable: Bool { self != .excluded }
 }
 
 /// Logs once per change: the videos whose verdict differs from the last one logged. Only Excluded and overridden
 /// videos are tracked, so a video back within the limit (or deleted) drops out and is logged again if it returns.
-package func verdictsToLog(previous: [String: FlashVerdict], current: [String: FlashVerdict]) -> [String] {
+func verdictsToLog(previous: [String: FlashVerdict], current: [String: FlashVerdict]) -> [String] {
     current.filter { $0.value != .withinLimit && previous[$0.key] != $0.value }.keys.sorted()
 }
 

@@ -6,22 +6,15 @@ import SharedKernel
 // modification date, so a replaced file is analysed again; entries for videos no longer in the folder are pruned.
 
 /// A video's Analysis: its measurements plus the Poster saved from it.
-package struct Analysis: Codable, Equatable {
-    package let meanLuminance: Double
-    package let flashesPerSecond: Double
-    package let posterSeconds: Double
+struct Analysis: Codable, Equatable, Sendable {
+    let meanLuminance: Double
+    let flashesPerSecond: Double
+    let posterSeconds: Double
     /// The Poster's file name in the app's Poster folder.
-    package let poster: String
-
-    package init(meanLuminance: Double, flashesPerSecond: Double, posterSeconds: Double, poster: String) {
-        self.meanLuminance = meanLuminance
-        self.flashesPerSecond = flashesPerSecond
-        self.posterSeconds = posterSeconds
-        self.poster = poster
-    }
+    let poster: String
 }
 
-package struct AnalysisCache: Equatable {
+struct AnalysisCache: Equatable {
     /// Bumped when the stored fields or their meaning change; an index in another version is discarded.
     private static let version = 1
 
@@ -43,33 +36,33 @@ package struct AnalysisCache: Equatable {
     /// Keyed by the video's path.
     private var entries: [String: Entry] = [:]
 
-    package init() {}
+    init() {}
 
     /// Nil when the data is unreadable or from another version; the caller starts empty and re-analyses.
-    package init?(json: Data) {
+    init?(json: Data) {
         guard let index = try? JSONDecoder().decode(Index.self, from: json), index.version == Self.version
         else { return nil }
         entries = index.videos
     }
 
-    package func json() throws -> Data {
+    func json() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(Index(version: Self.version, videos: entries))
     }
 
     /// The cached Analysis, only when the file is unchanged since it was analysed.
-    package func analysis(forVideoAt path: String, file: VideoFile) -> Analysis? {
+    func analysis(forVideoAt path: String, file: VideoFile) -> Analysis? {
         guard let entry = entries[path], entry.matches(file) else { return nil }
         return entry.analysis
     }
 
-    package mutating func store(_ analysis: Analysis, forVideoAt path: String, file: VideoFile) {
+    mutating func store(_ analysis: Analysis, forVideoAt path: String, file: VideoFile) {
         entries[path] = Entry(size: file.size, modifiedMilliseconds: file.modifiedMilliseconds, analysis: analysis)
     }
 
     /// Keeps only entries for videos still present (path to file) and unchanged. Returns true when any was removed.
-    package mutating func prune(present: [String: VideoFile]) -> Bool {
+    mutating func prune(present: [String: VideoFile]) -> Bool {
         let before = entries.count
         entries = entries.filter { path, entry in present[path].map { entry.matches($0) } ?? false }
         return entries.count != before
@@ -80,7 +73,7 @@ package struct AnalysisCache: Equatable {
 
 /// The settled videos (name to file) whose Analysis is known and whose flash verdict allows playing, sorted by name.
 /// A video not yet analysed is not eligible: it has not been screened.
-package func screenEligible(
+func screenEligible(
     settled: [String: VideoFile], analyses: [String: Analysis], overrides: [String]
 ) -> [EligibleVideo] {
     settled.compactMap { name, file -> EligibleVideo? in
@@ -94,7 +87,7 @@ package func screenEligible(
 
 /// Settled videos not Excluded for flashing, whether analysed yet or not, newest first. Not a list to play (an
 /// unanalysed video is unscreened); their Posters are stills that can stand in at launch.
-package func notExcludedNewestFirst(
+func notExcludedNewestFirst(
     settled: [String: Date], analyses: [String: Analysis], overrides: [String]
 ) -> [String] {
     settled.filter { name, _ in
@@ -107,7 +100,7 @@ package func notExcludedNewestFirst(
 }
 
 /// Settled videos still waiting for Analysis, newest first so the video most likely to play is ready soonest.
-package func videosToAnalyse(settled: [String: Date], analysed: Set<String>) -> [String] {
+func videosToAnalyse(settled: [String: Date], analysed: Set<String>) -> [String] {
     settled.filter { !analysed.contains($0.key) }
         .sorted { ($0.value, $0.key) > ($1.value, $1.key) }
         .map(\.key)

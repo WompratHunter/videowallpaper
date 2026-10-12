@@ -29,20 +29,19 @@ struct RoutingOrderTests {
         #expect(app.player.played.count == 2)
     }
 
-    @Test func thePosterFollowsTheVideoAndAStaleOneIsDropped() throws {
+    @Test func thePosterFollowsTheVideoAndAStaleOneIsDropped() async throws {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk, dawn]))
         app.coordinator.launch()
         let first = try #require(app.player.video)
         let next = first == AppHarness.url(dusk) ? dawn : dusk
 
         // The Current video is deleted: the Rotation replaces it and the player switches before its Poster arrives.
-        app.library.finishAnalysis([next])
+        app.library.folder.remove(first.lastPathComponent)
+        app.library.folder.passSettleInterval()
         #expect(app.player.video == AppHarness.url(next))
 
-        let stale = URL(fileURLWithPath: "/fake/posters/first.jpg")
-        let fresh = URL(fileURLWithPath: "/fake/posters/next.jpg")
-        #expect(app.library.deliverPoster(for: first, file: stale) == false)
-        #expect(app.library.deliverPoster(for: AppHarness.url(next), file: fresh) == true)
-        #expect(app.desktop.posters == [fresh])
+        // Both Posters arrive now: the first video's is no longer wanted, only the next one's is set.
+        await app.settleLibrary()
+        #expect(app.desktop.posters == [FakeLibrary.posterFile(of: next)])
     }
 }

@@ -28,20 +28,34 @@ struct LaunchTests {
         #expect(app.library.isStarted)
     }
 
-    @Test func analysisFinishingAfterLaunchStartsTheRotation() {
+    @Test func analysisFinishingAfterLaunchStartsTheRotation() async {
         let app = AppHarness(library: FakeLibrary(pending: ["dusk.mp4"]))
         app.coordinator.launch()
         app.clock.advance(by: 30)
-        // Only the Mode in effect, read at launch's decision.
-        #expect(app.events == [.rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))])
+        // Only the Mode in effect, read at launch's decision, and the desktop picture under the window, since
+        // nothing is screened yet.
+        #expect(app.eventsOutsideLibrary == [
+            .rotation(.modeInEffect(mode: .all, setting: "all", isAutoAppearance: false))
+        ])
+        #expect(app.libraryEvents == [.launchUnderlay(fileName: "earlier.jpg")])
         #expect(app.player.played.isEmpty)
         #expect(app.coordinator.snapshot.rotation.current == nil)
 
-        app.library.finishAnalysis([dusk])
+        app.library.analyser.script("dusk.mp4", luminance: 0.16)
+        await app.settleLibrary()
 
-        // The Library's event comes first (it is the log's cause), then the Rotation's switch it led to.
-        #expect(app.events.dropFirst().first == .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)))
-        #expect(app.events.count == 3)
+        // Analysis, then the eligible set it changed (the log's cause), then the Rotation's switch it led to.
+        #expect(app.libraryEvents.count == 3)
+        guard case .analysed(dusk.id, version: dusk.version, _) = app.libraryEvents[1] else {
+            Issue.record("expected dusk's Analysis, got \(app.libraryEvents)")
+            return
+        }
+        let eligibleAt = app.events.firstIndex(of: .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)))
+        let switchAt = app.events.firstIndex { event in
+            guard case .rotation(.switchDecided) = event else { return false }
+            return true
+        }
+        #expect(eligibleAt.map { $0 + 1 } == switchAt)
         #expect(app.switches == [AppHarness.DecidedSwitch(to: dusk.id, reason: .firstVideo, fade: 5)])
         #expect(app.player.played == [AppHarness.url(dusk)])
         #expect(app.coordinator.snapshot.rotation.current == dusk.id)

@@ -15,15 +15,15 @@ struct DesktopRoutingTests {
     private let beach = "/Users/me/Pictures/beach.jpg"
     private let city = "/Users/me/Pictures/city.heic"
     private let forest = "/Users/me/Pictures/forest.jpg"
-    private let poster = URL(fileURLWithPath: FakeDesktop.posterDirectory + "/poster-dusk.jpg")
+    private var poster: URL { FakeLibrary.posterFile(of: dusk) }
 
     /// Launches on `screens` (each screen's picture) and shows the Current video's Poster as the desktop picture.
-    private func launch(_ screens: KeyValuePairs<String, String>) throws -> AppHarness {
+    private func launch(_ screens: KeyValuePairs<String, String>) async throws -> AppHarness {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
         for (screen, path) in screens { app.desktop.pictures.show(path, on: screen) }
         app.coordinator.launch()
-        let video = try #require(app.player.video)
-        #expect(app.library.deliverPoster(for: video, file: poster) == true)
+        #expect(app.player.video != nil)
+        await app.settleLibrary()
         return app
     }
 
@@ -34,7 +34,7 @@ struct DesktopRoutingTests {
         }
     }
 
-    @Test func theFirstPosterRecordsOriginalsFirst() throws {
+    @Test func theFirstPosterRecordsOriginalsFirst() async throws {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
         app.desktop.pictures.show(beach, on: "main")
         app.desktop.pictures.show(city, on: "side")
@@ -47,8 +47,8 @@ struct DesktopRoutingTests {
 
         // A screen connected since is recorded before the Poster replaces its picture.
         app.desktop.pictures.show(forest, on: "new")
-        let video = try #require(app.player.video)
-        app.library.deliverPoster(for: video, file: poster)
+        #expect(app.player.video != nil)
+        await app.settleLibrary()
 
         #expect(desktopEvents(app).suffix(2) == [
             .originalsRecorded(screens: ["main", "new", "side"]),
@@ -59,8 +59,8 @@ struct DesktopRoutingTests {
             recordedScreens: ["main", "new", "side"], poster: poster))
     }
 
-    @Test func aScreenAlreadyShowingOurPosterIsNotRecorded() throws {
-        let app = try launch(["main": FakeDesktop.posterDirectory + "/earlier.jpg", "side": beach])
+    @Test func aScreenAlreadyShowingOurPosterIsNotRecorded() async throws {
+        let app = try await launch(["main": FakeDesktop.posterDirectory + "/earlier.jpg", "side": beach])
 
         #expect(desktopEvents(app) == [
             .originalsRecorded(screens: ["side"]),
@@ -70,14 +70,14 @@ struct DesktopRoutingTests {
     }
 
     /// Rewriting a record that can't be read could replace the true originals with our Poster, so it is kept.
-    @Test func anUnreadableRecordIsKeptAndReported() throws {
+    @Test func anUnreadableRecordIsKeptAndReported() async throws {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
         app.desktop.pictures.show(beach, on: "main")
         let unreadable = Data("not json".utf8)
         app.desktop.originals.data = unreadable
         app.coordinator.launch()
-        let video = try #require(app.player.video)
-        app.library.deliverPoster(for: video, file: poster)
+        #expect(app.player.video != nil)
+        await app.settleLibrary()
 
         let location = app.desktop.originals.location
         #expect(desktopEvents(app) == [
@@ -88,15 +88,15 @@ struct DesktopRoutingTests {
         #expect(app.desktop.originals.data == unreadable)
     }
 
-    @Test func aRecordThatCannotBeWrittenAndARefusedScreenAreReported() throws {
+    @Test func aRecordThatCannotBeWrittenAndARefusedScreenAreReported() async throws {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk]))
         app.desktop.pictures.show(beach, on: "main")
         app.desktop.pictures.show(city, on: "side")
         app.desktop.originals.refusesWrites = true
         app.desktop.pictures.refusing = ["side"]
         app.coordinator.launch()
-        let video = try #require(app.player.video)
-        app.library.deliverPoster(for: video, file: poster)
+        #expect(app.player.video != nil)
+        await app.settleLibrary()
 
         #expect(desktopEvents(app) == [
             .originalsNotRecorded(reason: "refused"),
@@ -107,8 +107,8 @@ struct DesktopRoutingTests {
         #expect(app.coordinator.snapshot.desktop == DesktopSlice(recordedScreens: [], poster: poster))
     }
 
-    @Test func restoreTouchesOnlyScreensShowingOurPoster() throws {
-        let app = try launch(["main": beach, "side": city])
+    @Test func restoreTouchesOnlyScreensShowingOurPoster() async throws {
+        let app = try await launch(["main": beach, "side": city])
         // The user chose a picture of their own since.
         app.desktop.pictures.show(forest, on: "side")
         let before = app.desktop.posters.count
@@ -121,8 +121,8 @@ struct DesktopRoutingTests {
         #expect(app.coordinator.snapshot.desktop.poster == nil)
     }
 
-    @Test func restoreFallsBackToAnotherScreensOriginalThenTheDefault() throws {
-        let app = try launch(["main": beach, "side": city])
+    @Test func restoreFallsBackToAnotherScreensOriginalThenTheDefault() async throws {
+        let app = try await launch(["main": beach, "side": city])
         // A screen connected since shows our Poster too, with no original of its own.
         app.desktop.pictures.show(poster.path, on: "new")
 
@@ -146,8 +146,8 @@ struct DesktopRoutingTests {
     }
 
     /// `--restore-wallpaper` exits 1 when a screen refuses its picture, after restoring every other screen.
-    @Test func aRefusedScreenFailsTheRestore() throws {
-        let app = try launch(["main": beach, "side": city])
+    @Test func aRefusedScreenFailsTheRestore() async throws {
+        let app = try await launch(["main": beach, "side": city])
         app.desktop.pictures.refusing = ["main"]
 
         #expect(!app.desktop.service.restoreOriginals())

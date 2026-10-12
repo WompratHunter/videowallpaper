@@ -1,6 +1,6 @@
 # Coding Standards
 
-Swift-only macOS app, built as a SwiftPM package (`Package.swift`, ADR 0001) that the `Makefile` drives with `swift build` / `swift test`. Its targets are laid out in Contexts and the Application layer below. While the code moves into its contexts, it has legacy targets: `Core` (`Sources/Core/`, Foundation-only), `Analyser` (`Sources/Analyser/`, AVFoundation, shared with the smoke runner), `App` (`Sources/App/`), the thin `VideoWallpaper` executable (`Sources/VideoWallpaper/main.swift`) and `Smoke` (`Tests/Smoke/`); legacy declarations used across targets are `package`. SwiftLint covers `Package.swift`, `Sources/` and `Tests/`. App code is split into modules (see Code Organisation); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
+Swift-only macOS app, built as a SwiftPM package (`Package.swift`, ADR 0001) that the `Makefile` drives with `swift build` / `swift test`. Its targets are laid out in Contexts and the Application layer below. While the code moves into its contexts, it has legacy targets: `Core` (`Sources/Core/`, Foundation-only), `App` (`Sources/App/`), the thin `VideoWallpaper` executable (`Sources/VideoWallpaper/main.swift`) and `Smoke` (`Tests/Smoke/`, which runs the Library context's analyser); legacy declarations used across targets are `package`. SwiftLint covers `Package.swift`, `Sources/` and `Tests/`. App code is split into modules (see Code Organisation); Foundation-only core logic lives in `Sources/Core/`; tests live in `Tests/`.
 
 ## Language & Platform
 
@@ -38,7 +38,7 @@ Swift-only macOS app, built as a SwiftPM package (`Package.swift`, ADR 0001) tha
 
 - The app is a set of deep modules, each a small interface over most of the logic. Modules never call each other: the coordinator (`Sources/Application/Coordinator*.swift`) is the only place they meet, routing system notifications, the shared 5 s tick and Preferences to each module and carrying one module's events to another (see Contexts and the Application layer)
   - **Player** (`Player*.swift`): the shared player, the layers in every window, health checks and Recovery
-  - **Library** (`Library*.swift`): the Wallpaper folder watch, settle check, the video to play and its Posters
+  - **Library** (the Library context, `Sources/Library/`): the Wallpaper folder watch, settle check, Analysis, the Video catalogue and its Posters, behind folder, analyser and store ports
   - **WallpaperWindows** (`WallpaperWindows*.swift`): one desktop-level window per screen, hosting the Player's layers, and occlusion
   - **Visibility** (`Visibility*.swift`): Unseen, Veiled or Visible, with a change callback
   - **Rotation** (`Rotation*.swift`): the switch scheduler, reading the inputs the coordinator connects (time, eligible videos, Presence, `Mode`, Daylight) for Core's `RotationState`, returning the switch and publishing `RotationEvent`s
