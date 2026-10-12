@@ -12,6 +12,7 @@ private let posterFrameChoice = "mean-luminance"
 /// The Poster's file name for a video. FNV-1a, not `Hasher`, because `Hasher` is seeded per process and the
 /// name must be the same on every launch. The frame choice is part of the name: Posters exported at 5 s before
 /// Analysis chose a representative frame get new names, so macOS shows the new frame instead of its cached image.
+/// `package` so test support can name the Poster a Version gets.
 package func posterFileName(forVideoAt path: String, file: VideoFile) -> String {
     var hash: UInt64 = 0xcbf2_9ce4_8422_2325
     let key = "\(path)\u{0}\(file.size)\u{0}\(file.modifiedMilliseconds)\u{0}\(posterFrameChoice)"
@@ -30,7 +31,7 @@ package func isPosterFileName(_ name: String) -> Bool {
 /// Posters in the folder that belong to no current video, so app data doesn't grow with every video ever played.
 /// The Current video's Poster is always kept: it is the desktop picture, and an unreadable Wallpaper folder lists no
 /// videos at all.
-package func stalePosters(in names: [String], keeping keep: Set<String>, current: String) -> [String] {
+func stalePosters(in names: [String], keeping keep: Set<String>, current: String) -> [String] {
     names.filter { isPosterFileName($0) && !keep.contains($0) && $0 != current }.sorted()
 }
 
@@ -39,7 +40,7 @@ package func stalePosters(in names: [String], keeping keep: Set<String>, current
 // frame can't flash, so meanwhile the window shows a Poster or the desktop picture, never black.
 
 /// Where the window's Poster underlay can come from at launch.
-package enum UnderlaySource: Equatable {
+enum UnderlaySource: Equatable {
     /// A saved Poster in the app's Poster folder, by file name.
     case poster(String)
     /// The system desktop picture: the user's own picture on a first install, or the Poster an earlier version set.
@@ -50,7 +51,7 @@ package enum UnderlaySource: Equatable {
 /// Poster name of the video that will play, `waiting` those of the other settled videos that aren't Excluded
 /// (analysed or not) newest first, and `saved` the file names in the Poster folder. Their saved Posters come first,
 /// then the desktop picture, then any other saved Poster as a last resort.
-package func underlayCandidates(toPlay: String?, waiting: [String], saved: [String]) -> [UnderlaySource] {
+func underlayCandidates(toPlay: String?, waiting: [String], saved: [String]) -> [UnderlaySource] {
     let savedPosters = Set(saved.filter(isPosterFileName))
     var seen: Set<String> = []
     let own = ([toPlay].compactMap { $0 } + waiting).filter { savedPosters.contains($0) && seen.insert($0).inserted }

@@ -3,8 +3,8 @@ import PackageDescription
 
 // One target per bounded context (ADR 0001), meeting only in `Application`'s coordinator (ADR 0002). A context
 // depends only on the shared kernel. `Platform` is the entry point: it composes the adapters and is the only target
-// that knows every concrete type. The legacy `Core` (Foundation-only domain), `App` (AppKit/AVFoundation adapters)
-// and `Analyser` targets hold the code still to move into its context; each later ticket moves its own files.
+// that knows every concrete type. The legacy `Core` (Foundation-only domain) and `App` (AppKit/AVFoundation adapters)
+// targets hold the code still to move into its context; each later ticket moves its own files.
 // Swift 6 language mode comes last.
 // Each context's target and test target is one line of its own, so a context ticket adds a dependency on its own
 // line without touching another's.
@@ -56,11 +56,10 @@ let package = Package(
             .testTarget(name: "PlatformTests", dependencies: ["Platform", "Application"]),
             // Legacy targets, emptied context by context.
             .target(name: "Core", dependencies: ["SharedKernel"] + contextDependencies),
-            .target(name: "Analyser", dependencies: ["Core"]),
             .target(
                 name: "App",
-                dependencies: ["Core", "Analyser", "Application", "SharedKernel"] + contextDependencies),
-            .executableTarget(name: "Smoke", dependencies: ["Core", "Analyser"], path: "Tests/Smoke"),
+                dependencies: ["Core", "Application", "SharedKernel"] + contextDependencies),
+            .executableTarget(name: "Smoke", dependencies: ["Library"], path: "Tests/Smoke"),
             .testTarget(name: "CoreTests", dependencies: ["Core", "SharedKernel"] + contextDependencies)
         ],
     swiftLanguageModes: [.v5]
