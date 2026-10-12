@@ -17,7 +17,7 @@ struct RotationScenarioTests {
 
     @Test func aNewlyAddedVideoPlaysAtTheNextAllowedSwitch() {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk, dawn]))
-        app.presence.state = .unseen
+        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
         app.coordinator.launch()
         app.clock.advance(by: 60)
 
@@ -45,7 +45,7 @@ struct RotationScenarioTests {
         #expect(app.coordinator.snapshot.rotation.dwell == 25 * 60)
         #expect(app.coordinator.snapshot.rotation.nextMinimumDwell == TimeInterval(60 * 60))
 
-        app.presence.state = .unseen
+        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
 
         let next = first == dusk.id ? dawn.id : dusk.id
         #expect(app.switches.last == AppHarness.DecidedSwitch(to: next, reason: .dwell, fade: 5))
