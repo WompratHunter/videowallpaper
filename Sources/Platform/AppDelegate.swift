@@ -4,8 +4,9 @@ import Core
 
 // MARK: - App delegate
 // The entry point: it composes the adapters, owns the shared tick's clock, observes system notifications and forwards
-// each to the coordinator, where the contexts meet. No routing lives here. Workspace notifications arrive on the main
-// thread; the two that don't are hopped there. Lock and unlock are Presence's, behind its lock signal port.
+// each to the coordinator, where the contexts meet. No routing lives here. The time zone notification arrives on an
+// arbitrary queue and is hopped to the main thread. Lock and unlock are Presence's, behind its lock signal port;
+// screen, session and power notifications are Playback's ports.
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -26,28 +27,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate {
     private func observeSystemEvents() {
-        let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(
-            self, selector: #selector(screensSleep),
-            name: NSWorkspace.screensDidSleepNotification, object: nil)
-        workspace.addObserver(
-            self, selector: #selector(screensWake),
-            name: NSWorkspace.screensDidWakeNotification, object: nil)
-        workspace.addObserver(
-            self, selector: #selector(systemWake),
-            name: NSWorkspace.didWakeNotification, object: nil)
-        workspace.addObserver(
-            self, selector: #selector(sessionActive),
-            name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
-        workspace.addObserver(
-            self, selector: #selector(sessionInactive),
-            name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(screensChanged),
-            name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(powerStateChanged),
-            name: .NSProcessInfoPowerStateDidChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(timeZoneChanged),
             name: .NSSystemTimeZoneDidChange, object: nil)
@@ -60,27 +39,4 @@ extension AppDelegate {
             self?.coordinator?.timeZoneChanged()
         }
     }
-
-    @objc private func screensSleep() {
-        Log.write("screens-sleep", "pausing shared player")
-        coordinator?.screensDidSleep()
-    }
-
-    @objc private func screensWake() { coordinator?.screensDidWake() }
-
-    /// Posted on an arbitrary queue; the player is main-thread only.
-    @objc private func powerStateChanged() {
-        DispatchQueue.main.async { [weak self] in
-            Log.write("power", "low-power=\(ProcessInfo.processInfo.isLowPowerModeEnabled ? "on" : "off")")
-            self?.coordinator?.powerStateChanged()
-        }
-    }
-
-    @objc private func systemWake() { coordinator?.systemDidWake() }
-
-    @objc private func sessionActive() { coordinator?.sessionDidBecomeActive() }
-
-    @objc private func sessionInactive() { coordinator?.sessionDidResignActive() }
-
-    @objc private func screensChanged() { coordinator?.screenParametersChanged() }
 }
