@@ -1,19 +1,18 @@
 import AppKit
-import Application
-import Core
 
 // MARK: - Wallpaper windows
-// One desktop-level window per screen. Windows only host the shared player's layers; all playback lives in Player.
+// The windows port's adapter: one desktop-level window per screen. Windows only host the shared player's layers; all
+// playback lives in the service.
 
-package final class WallpaperWindows {
-    /// Called with whether every window is covered by opaque windows, on each build and occlusion change.
-    package var onOcclusionChange: (Bool) -> Void = { _ in }
+@MainActor
+package final class WallpaperWindows: WallpaperWindowsPort {
+    package var onOcclusionChange: (OcclusionChange, Bool) -> Void = { _, _ in }
 
-    private let player: Player
+    private let player: SharedPlayer
     private var windows: [WallpaperWindow] = []
     private var occlusionObserver: NSObjectProtocol?
 
-    package init(player: Player) {
+    package init(player: SharedPlayer) {
         self.player = player
     }
 
@@ -29,7 +28,7 @@ package final class WallpaperWindows {
         old.forEach { $0.close() }
         // orderFront, not makeKeyAndOrderFront: a desktop window must never take keyboard focus.
         windows.forEach { $0.orderFront(nil) }
-        applyOcclusion(change: "windows=\(windows.count)")
+        applyOcclusion(change: .windowsBuilt(count: windows.count))
         observeOcclusion()
     }
 
@@ -40,36 +39,34 @@ package final class WallpaperWindows {
 
     // MARK: - Occlusion
 
-    /// Started after the first build, so the launch state is logged once by the build itself.
+    /// Started after the first build, so the launch state is reported once by the build itself.
     private func observeOcclusion() {
         guard occlusionObserver == nil else { return }
         occlusionObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: nil
         ) { [weak self] note in
-            self?.occlusionChanged(note)
+            // Windows post it on the main thread.
+            MainActor.assumeIsolated { self?.occlusionChanged(note) }
         }
     }
 
     private func occlusionChanged(_ note: Notification) {
         guard let window = note.object as? WallpaperWindow, let index = windows.firstIndex(of: window) else { return }
-        applyOcclusion(change: "screen=\(index) visible=\(window.occlusionState.contains(.visible) ? "yes" : "no")")
+        applyOcclusion(change: .screen(index: index, isVisible: window.occlusionState.contains(.visible)))
     }
 
-    /// Pauses only when every display's window is covered by opaque windows. Translucent ones (e.g. Ghostty)
+    /// Covered only when every display's window is covered by opaque windows. Translucent ones (e.g. Ghostty)
     /// leave the window's occlusion state visible, so the video keeps playing behind them.
-    private func applyOcclusion(change: String) {
+    private func applyOcclusion(change: OcclusionChange) {
         let isAllOccluded = isEveryWindowOccluded(visibility: windows.map { $0.occlusionState.contains(.visible) })
-        Log.write("occlusion", "\(change) all-occluded=\(isAllOccluded ? "yes" : "no")")
-        onOcclusionChange(isAllOccluded)
+        onOcclusionChange(change, isAllOccluded)
     }
 }
-
-extension WallpaperWindows: WallpaperWindowsService {}
 
 // MARK: - Per-screen wallpaper window
 
 private final class WallpaperWindow: NSWindow {
-    init(screen: NSScreen, player: Player) {
+    init(screen: NSScreen, player: SharedPlayer) {
         super.init(
             contentRect: screen.frame,
             styleMask: .borderless,

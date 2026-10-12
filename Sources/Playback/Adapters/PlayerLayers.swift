@@ -1,12 +1,12 @@
 import AVFoundation
-import Core
 import QuartzCore
 
 // MARK: - Player layers
-// Every window's Poster layer and two video layers above it. The active video layers all show the Player's one
+// Every window's Poster layer and two video layers above it. The active video layers all show the shared player's one
 // queue player and the Poster layers share one decoded image, so tearing the player down reveals the Poster, never
 // black. During a crossfade the other slot shows the incoming player above the active one and fades in.
 
+@MainActor
 final class PlayerLayers {
     private static let fadeKey = "crossfade"
 
