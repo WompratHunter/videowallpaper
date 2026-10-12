@@ -1,6 +1,7 @@
 import Application
 import Foundation
 import Playback
+import Presence
 import SharedKernel
 import TestSupport
 import Testing
@@ -26,8 +27,9 @@ struct PlaybackScenarioTests {
 
     @Test func currentVideoDeletedMidCrossfadeInLowPowerModeEndsOnThePosterThenPlaysTheReplacement() throws {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk, dawn, noon]))
-        app.presence.state = .unseen
         app.coordinator.launch()
+        // Presence hears Unseen while the player still plays (no window reported covered), so a switch crossfades.
+        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
         let first = try #require(app.player.video)
         // Past the Unseen minimum Dwell: the next tick switches with a crossfade, which starts loading.
         app.playbackClock.advance(by: 20 * 60 + 5)
@@ -116,10 +118,12 @@ struct PlaybackScenarioTests {
         #expect(!app.player.isPlaying)
         #expect(app.coordinator.snapshot.playback.state == .paused)
         #expect(app.coordinator.snapshot.playback.isEveryWindowOccluded)
-        #expect(app.events.suffix(2) == [
+        // Occlusion is published first, then forwarded to the gate and to Presence.
+        #expect(app.events.suffix(3) == [
             .playback(.occlusionChanged(.screen(index: 0, isVisible: false), isEveryWindowOccluded: true)),
             .playback(.stateChanged(
-                input: .allWindowsOccluded(true), action: .pause, state: .paused, video: dusk.id))
+                input: .allWindowsOccluded(true), action: .pause, state: .paused, video: dusk.id)),
+            .presence(.changed(to: .unseen, because: .input(.everyWindowOccluded(true), cause: "occlusion")))
         ])
         // A paused player's frozen time is expected: no Recovery however long it stays covered.
         app.playbackClock.advance(by: 10 * 60)

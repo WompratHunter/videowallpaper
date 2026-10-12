@@ -21,7 +21,7 @@ struct RoutingOrderTests {
         app.clock.advance(by: 21 * 60)
         #expect(app.switches.count == 1)
 
-        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
+        app.windows.occlude(true)
 
         // No tick in between: the change itself asked the Rotation.
         #expect(app.switches.count == 2)

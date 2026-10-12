@@ -58,7 +58,7 @@ struct LaunchTests {
 
     @Test func theTickSwitchesOnceDwellIsReached() {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk, dawn]))
-        app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
+        app.windows.occlude(true)
         app.coordinator.launch()
         let first = app.switches.first?.to
 
