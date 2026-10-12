@@ -15,13 +15,18 @@ struct RotationScenarioTests {
     private let dawn = AppHarness.video("dawn.mp4", 0.18)
     private let fresh = AppHarness.video("fresh.mp4", 0.17)
 
-    @Test func aNewlyAddedVideoPlaysAtTheNextAllowedSwitch() {
+    @Test func aNewlyAddedVideoPlaysAtTheNextAllowedSwitch() async {
         let app = AppHarness(library: FakeLibrary(eligible: [dusk, dawn]))
         app.presence.apply(.everyWindowOccluded(true), cause: "occlusion")
         app.coordinator.launch()
         app.clock.advance(by: 60)
 
-        app.library.finishAnalysis([dusk, dawn, fresh])
+        // A new file settles and its Analysis finishes.
+        app.library.folder.passSettleInterval()
+        app.library.analyser.script(fresh.name, luminance: fresh.meanLuminance)
+        app.library.folder.write(fresh.name, size: 1_000)
+        app.library.folder.passSettleInterval()
+        await app.settleLibrary()
 
         // Queued, not played: Dwell is still short of the Unseen minimum.
         #expect(app.switches.count == 1)
@@ -75,7 +80,8 @@ struct RotationScenarioTests {
         let first = try #require(app.switches.first?.to)
         let remaining = first == dusk.id ? dawn : dusk
 
-        app.library.finishAnalysis([remaining])
+        app.library.folder.remove(first.fileName)
+        app.library.folder.passSettleInterval()
 
         // No tick and no Dwell: the folder change itself replaced it.
         #expect(app.switches.last == AppHarness.DecidedSwitch(to: remaining.id, reason: .currentRemoved, fade: 5))

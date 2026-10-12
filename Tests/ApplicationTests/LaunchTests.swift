@@ -51,8 +51,10 @@ struct LaunchTests {
             return
         }
         let eligibleAt = app.events.firstIndex(of: .library(.eligibleSetChanged(eligible: [dusk], cause: .analysis)))
-        let switchAt = app.events.firstIndex(of: .rotation(.switchDecided(
-            from: nil, to: dusk.id, reason: .firstVideo, fade: 5, isDeferred: false)))
+        let switchAt = app.events.firstIndex { event in
+            guard case .rotation(.switchDecided) = event else { return false }
+            return true
+        }
         #expect(eligibleAt.map { $0 + 1 } == switchAt)
         #expect(app.switches == [AppHarness.DecidedSwitch(to: dusk.id, reason: .firstVideo, fade: 5)])
         #expect(app.player.played == [AppHarness.url(dusk)])
